@@ -22,6 +22,8 @@ theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 
 ```{r}
 library(readr)
+fullFile <- read_csv("fullFile.csv")
+macro<-read.csv("clean_macro - Sheet1.csv")
 USAFilter <- read_csv("USAFilter.csv")
 ```
 
@@ -77,6 +79,11 @@ write_csv(fullFile, "fullFile.csv")
 ```
 
 
+```{r}
+fullFile %>% 
+  left_join(macro) %>% 
+  arrange(COMPANY)
+```
 
 
 
