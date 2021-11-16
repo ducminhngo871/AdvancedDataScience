@@ -1,0 +1,87 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(usemodels)         # for suggesting step_XXX() functions
+library(glmnet)            # for regularized regression, including LASSO
+library(naniar)            # for examining missing values (NAs)
+library(lubridate)         # for date manipulation
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+```{r}
+library(readr)
+USAFilter <- read_csv("USAFilter.csv")
+```
+
+```{r}
+S_and_P_500 <- read_csv("S_and_P_500 copy.csv")
+```
+
+```{r}
+S_and_P_500
+```
+
+```{r}
+USAFilter <- USAFilter %>% 
+  mutate(YEAR = Year)
+```
+
+```{r}
+fullFile <- S_and_P_500 %>% 
+  inner_join(USAFilter, by = c("YEAR", "COMPANY")) %>% 
+  select(-c(`...1`, Buy_Close)) %>% 
+```
+
+```{r}
+fullFile<- fullFile %>% 
+  select(-Sale_Close)
+```
+
+```{r}
+write_csv(fullFile, "fullFile.csv")
+```
+
+```{r}
+SP500Industry <- read_csv("SP500Industry.csv")
+
+SP500Industry <- SP500Industry %>% 
+  mutate(COMPANY = Symbol) %>% 
+  select(-Symbol)
+```
+
+```{r}
+fullFile <- fullFile %>% 
+  inner_join(SP500Industry, by = "COMPANY") %>% 
+  select(-Year)
+```
+
+```{r}
+fullFile <- fullFile %>% 
+  select(- Date, TotalRevenue, SellingAndMarketingExpense, ShareIssued, Name.y, Sector.y, AccountsReceivable, CashAndCashEquivalents, Inventory, NetIncome)
+```
+
+```{r}
+write_csv(fullFile, "fullFile.csv")
+```
+
+
+
+
+
+
+
+
+
+
