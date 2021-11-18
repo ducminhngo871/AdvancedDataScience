@@ -47,10 +47,34 @@ final_data <- fullFile %>%
                 as.numeric)) %>% 
   # delete less important factors -> Exchange can possibily be deleted
   select(-Name.x,-Sector.x,-observation_date,-Name) %>% 
-  mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor)) %>% 
-  filter(YEAR<2021)
+  mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor))  
+  #filter(YEAR<2021)
 #colnames(final_data)  
 ```
+
+```{r}
+finalDATASET <- read_csv("FINALDATASET.csv")
+```
+
+```{r}
+final_data <- finalDATASET %>% 
+  dummy_cols(select_columns = "Sector") %>% 
+  mutate_at(vars(matches("Sector")),~as.factor(.)) %>% 
+  # convert Macro factors from characters to numeric
+  mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
+                as.numeric)) %>% 
+  # delete less important factors -> Exchange can possibily be deleted
+  #select(-Name.x,-Sector.x,-observation_date,-Name) %>% 
+  mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor)) 
+```
+
+```{r}
+final_data <- final_data %>% 
+  drop_na()
+```
+
+
+
 
 ```{r}
 final_data %>% 
@@ -81,7 +105,7 @@ final_data %>%
 
  final_data %>% 
   select(where(is.numeric)) %>% 
-  select(13:24) %>% 
+  select(13:21) %>% 
   pivot_longer(cols = everything(),
                names_to = "variable", 
                values_to = "value") %>% 
@@ -91,31 +115,31 @@ final_data %>%
              scales = "free",
              nrow = 3)
  
- final_data %>% 
-  select(where(is.numeric)) %>% 
-  select(25:36) %>% 
-  pivot_longer(cols = everything(),
-               names_to = "variable", 
-               values_to = "value") %>% 
-  ggplot(aes(x = value)) +
-  geom_histogram(bins = 30) +
-  facet_wrap(vars(variable), 
-             scales = "free",
-             nrow = 3,
-             ncol=4)
-
-  final_data %>% 
-  select(where(is.numeric)) %>% 
-  select(37:41) %>% 
-  pivot_longer(cols = everything(),
-               names_to = "variable", 
-               values_to = "value") %>% 
-  ggplot(aes(x = value)) +
-  geom_histogram(bins = 30) +
-  facet_wrap(vars(variable), 
-             scales = "free",
-             nrow = 3,
-             ncol=4)
+ # final_data %>% 
+ #  select(where(is.numeric)) %>% 
+ #  #select(25:36) %>% 
+ #  pivot_longer(cols = everything(),
+ #               names_to = "variable", 
+ #               values_to = "value") %>% 
+ #  ggplot(aes(x = value)) +
+ #  geom_histogram(bins = 30) +
+ #  facet_wrap(vars(variable), 
+ #             scales = "free",
+ #             nrow = 3,
+ #             ncol=4)
+ # 
+ #  final_data %>% 
+ #  select(where(is.numeric)) %>% 
+ #  #select(37:41) %>% 
+ #  pivot_longer(cols = everything(),
+ #               names_to = "variable", 
+ #               values_to = "value") %>% 
+ #  ggplot(aes(x = value)) +
+ #  geom_histogram(bins = 30) +
+ #  facet_wrap(vars(variable), 
+ #             scales = "free",
+ #             nrow = 3,
+ #             ncol=4)
 
 
 
