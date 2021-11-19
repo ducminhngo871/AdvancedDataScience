@@ -1,0 +1,92 @@
+---
+title: "RandomForest"
+author: "Sivhuo Prak (Siv)"
+date: "11/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(stacks)            # for stacking models
+library(glmnet)            # for regularized regression, including LASSO
+library(ranger)            # for random forest model
+library(kknn)              # for knn model
+library(naniar)            # for examining missing values (NAs)
+library(lubridate)         # for date manipulation
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+## Final Data 
+
+```{r}
+final_data %>% 
+  slice(1:5)
+```
+
+## Spliting Data 
+```{r}
+set.seed(327) #for reproducibility
+
+# Randomly assigns 75% of the data to training.
+data_split <- initial_split(final_data, 
+                             prop = .75)
+data_training <- training(data_split)
+data_testing <- testing(data_split)
+```
+
+## Create the recipe 
+
+```{r}
+ranger_recipe <- 
+  recipe(formula = PROFIT ~ ., 
+         data = data_training)  
+```
+
+```{r}
+ranger_spec <- 
+  rand_forest(mtry = 6, 
+              min_n = 10, 
+              trees = 200) %>% 
+  set_mode("regression") %>% 
+  set_engine("ranger")
+```
+
+```{r}
+ranger_workflow <- 
+  workflow() %>% 
+  add_recipe(ranger_recipe) %>% 
+  add_model(ranger_spec)
+```
+
+```{r}
+ranger_fit <- ranger_workflow %>% 
+  fit(data_training)
+
+ranger_fit
+```
+
+```{r}
+set.seed(1211) # for reproducibility
+data_cv <- vfold_cv(data_training, v = 5)
+
+metric <- metric_set(rmse)
+ctrl_res <- control_stack_resamples()
+
+ranger_cv <- ranger_workflow %>% 
+  fit_resamples(data_cv, 
+                metrics = metric,
+                control = ctrl_res)
+
+# Evaluation metrics averaged over all folds:
+collect_metrics(ranger_cv)
+```
+
+
