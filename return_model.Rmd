@@ -1,0 +1,105 @@
+---
+title: "Profit Model"
+output: html_document
+---
+```{r}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(usemodels)         # for suggesting step_XXX() functions
+library(glmnet)            # for regularized regression, including LASSO
+library(naniar)            # for examining missing values (NAs)
+library(lubridate)         # for date manipulation
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+library(readr)
+library(fastDummies)
+library(kableExtra)
+theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+```{r}
+set.seed(327) #for reproducibility
+
+final_data <- final_data %>% 
+  filter(YEAR<2021) %>% 
+  select(-YEAR,-COMPANY,-PRICE,-Sell,-Name,-GDP,-M1SL,-Earnings_next_year) 
+  
+
+data_split <- initial_split(final_data, 
+                             prop = .75)
+data_training <- training(data_split)
+data_testing <- testing(data_split)
+final_data
+```
+
+```{r}
+return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
+                       data = data_training) %>% 
+  step_mutate(PE = `MARKET CAP`/EARNINGS
+              ) %>%
+  step_interact(terms = ~GDP:starts_with("Sector_")) %>% 
+  step_normalize(all_predictors(), 
+                 -all_nominal())
+```
+```{r}
+return_recipe %>% 
+  prep(data_training) %>%
+  # using bake(new_data = NULL) gives same result as juice()
+  # bake(new_data = NULL)
+  juice() 
+```
+```{r}
+return_linear_mod <- 
+  # Define a linear regression model
+  linear_reg() %>% 
+  # Set the engine to "lm" (lm() function is used to fit model)
+  set_engine("lm") %>% 
+  # Not necessary here, but good to remember for other models
+  set_mode("regression")
+```
+```{r}
+return_lm_wf <- 
+  # Set up the workflow
+  workflow() %>% 
+  # Add the recipe
+  add_recipe(return_recipe) %>% 
+  # Add the modeling
+  add_model(return_linear_mod)
+```
+```{r}
+return_lm_fit <- 
+  # Tell it the workflow
+  return_lm_wf %>% 
+  # Fit the model to the training data
+  fit(data_training)
+
+# Display the results nicely
+return_lm_fit %>% 
+  pull_workflow_fit() %>% 
+  tidy() %>% 
+  mutate(across(where(is.numeric), ~round(.x,3))) 
+```
+```{r}
+set.seed(327) # for reproducibility
+return_cv <- vfold_cv(data_training, v = 5)
+return_lm_fit_cv <-
+  # Tell it the workflow
+  return_lm_wf %>% 
+  # Fit the model (using the workflow) to the cv data
+  fit_resamples(return_cv)
+
+# The evaluation metrics for each fold:
+return_lm_fit_cv %>% 
+  select(id, .metrics) %>% 
+  unnest(.metrics) 
+```
+```{r}
+collect_metrics(return_lm_fit_cv)
+```
+
+
