@@ -1,0 +1,348 @@
+---
+title: "Duc Ngo Part1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(usemodels)         # for suggesting step_XXX() functions
+library(glmnet)            # for regularized regression, including LASSO
+library(naniar)            # for examining missing values (NAs)
+library(lubridate)         # for date manipulation
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+```{r}
+data <- read_csv("FINALDATASET.csv")
+```
+
+```{r}
+data <- data %>% 
+  drop_na()
+```
+
+```{r}
+normalize <- function(x) {
+return ((x - min(x)) / (max(x) - min(x)))
+}
+
+denormalize <- function(x,minval,maxval) {
+    x*(maxval-minval) + minval
+}
+```
+
+```{r}
+data$Earnings_next_year<-normalize(data$Earnings_next_year)
+```
+
+```{r}
+set.seed(327) #for reproducibility
+
+# data <- data %>% 
+#   #mutate(log_earnings = log(Earnings_next_year, base = 10)) %>% 
+#   select(-Earnings_next_year)
+
+# Randomly assigns 75% of the data to training.
+data_split <- initial_split(data, 
+                             prop = .75)
+data_split
+```
+
+```{r}
+data_training <- training(data_split)
+data_testing <- testing(data_split)
+```
+
+```{r}
+earnings_recipe <- recipe(Earnings_next_year ~ COGS + SALES + `MARKET CAP` + EARNINGS, #short-cut, . = all other vars
+                       data = data_training) %>% 
+  step_dummy(all_nominal(), 
+             -all_outcomes(), 
+             -has_role(match = "evaluative")) %>% 
+  step_normalize(all_predictors(), 
+                 -all_nominal())
+  
+```
+
+```{r}
+earnings_recipe %>% 
+  prep(data_training) %>%
+  # using bake(new_data = NULL) gives same result as juice()
+  # bake(new_data = NULL)
+  juice() 
+```
+
+```{r}
+earnings_linear_mod <- 
+  # Define a linear regression model
+  linear_reg() %>% 
+  # Set the engine to "lm" (lm() function is used to fit model)
+  set_engine("lm") %>% 
+  # Not necessary here, but good to remember for other models
+  set_mode("regression")
+```
+
+```{r}
+earnings_lm_wf <- 
+  # Set up the workflow
+  workflow() %>% 
+  # Add the recipe
+  add_recipe(earnings_recipe) %>% 
+  # Add the modeling
+  add_model(earnings_linear_mod)
+
+earnings_lm_wf
+```
+
+```{r}
+earnings_lm_fit <- 
+  # Tell it the workflow
+  earnings_lm_wf %>% 
+  # Fit the model to the training data
+  fit(data_training)
+
+# Display the results nicely
+earnings_lm_fit %>% 
+  pull_workflow_fit() %>% 
+  tidy() %>% 
+  mutate(across(where(is.numeric), ~round(.x,3))) 
+```
+
+### Tuning: 
+
+```{r}
+earnings_lasso_mod <- 
+  # Define a lasso model 
+  # I believe default is mixture = 1 so probably don't need 
+  linear_reg(mixture = 1) %>% 
+  # Set the engine to "glmnet" 
+  set_engine("glmnet") %>% 
+  # The parameters we will tune.
+  set_args(penalty = tune()) %>% 
+  # Use "regression"
+  set_mode("regression")
+```
+
+```{r}
+earnings_lasso_wf <- 
+  # Set up the workflow
+  workflow() %>% 
+  # Add the recipe
+  add_recipe(earnings_recipe) %>% 
+  # Add the modeling
+  add_model(earnings_lasso_mod)
+
+earnings_lasso_wf
+```
+
+```{r}
+penalty_grid <- grid_regular(penalty(),
+                             levels = 20)
+penalty_grid 
+```
+
+```{r}
+set.seed(1211) # for reproducibility
+earnings_cv <- vfold_cv(data_training, v = 5)
+```
+
+
+```{r}
+earnings_lasso_tune <- 
+  earnings_lasso_wf %>% 
+  tune_grid(
+    resamples = earnings_cv,
+    grid = penalty_grid
+    )
+
+earnings_lasso_tune
+```
+
+```{r}
+# The rmse for each fold:
+earnings_lasso_tune %>% 
+  select(id, .metrics) %>% 
+  unnest(.metrics) %>% 
+  filter(.metric == "rmse")
+```
+
+```{r}
+# Visualize rmse vs. penalty
+earnings_lasso_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "rmse") %>% 
+  ggplot(aes(x = penalty, y = mean)) +
+  geom_point() +
+  geom_line() +
+  scale_x_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10",scales::math_format(10^.x))) +
+  labs(x = "penalty", y = "rmse")
+```
+
+
+```{r}
+earnings_lasso_tune %>% 
+  show_best(metric = "rmse")
+```
+
+```{r}
+# Best tuning parameter by smallest rmse
+best_param <- earnings_lasso_tune %>% 
+  select_best(metric = "rmse")
+best_param
+```
+
+```{r}
+# Best tuning parameter by smallest rmse
+one_se_param <- earnings_lasso_tune %>% 
+  select_by_one_std_err(metric = "rmse", desc(penalty))
+one_se_param
+```
+
+```{r}
+earnings_lasso_final_wf <- earnings_lasso_wf %>% 
+  finalize_workflow(one_se_param)
+earnings_lasso_final_wf
+```
+
+```{r}
+earnings_lasso_final_mod <- earnings_lasso_final_wf %>% 
+  fit(data = data_training)
+
+earnings_lasso_final_mod %>% 
+  pull_workflow_fit() %>% 
+  tidy() 
+```
+
+```{r}
+# Visualize variable importance
+earnings_lasso_final_mod %>% 
+  pull_workflow_fit() %>% 
+  vip()
+```
+
+```{r}
+# Fit model with best tuning parameter(s) to training data and apply to test data
+earnings_lasso_test <- earnings_lasso_final_wf %>% 
+  last_fit(data_split)
+
+# Metrics for model applied to test data
+earnings_lasso_test %>% 
+  collect_metrics()
+```
+
+
+#### Fit the model: 
+
+```{r}
+set.seed(456) # For reproducibility - not needed for this algorithm
+
+earnings_lm_fit_cv <-
+  # Tell it the workflow
+  earnings_lm_wf %>% 
+  # Fit the model (using the workflow) to the cv data
+  fit_resamples(earnings_cv)
+
+# The evaluation metrics for each fold:
+earnings_lm_fit_cv %>% 
+  select(id, .metrics) %>% 
+  unnest(.metrics) 
+```
+
+```{r}
+# Evaluation metrics averaged over all folds:
+collect_metrics(earnings_lm_fit_cv)
+```
+
+```{r}
+# Just to show you where the averages come from.
+# You would never need to do this part since it's the same as the previous chunk.
+earnings_lm_fit_cv %>% 
+  select(id, .metrics) %>% 
+  unnest(.metrics) %>% 
+  group_by(.metric, .estimator) %>% 
+  summarize(mean = mean(.estimate),
+            n = n(),
+            std_err = sd(.estimate)/sqrt(n))
+```
+
+Apply to the testing to see the result:
+
+```{r}
+earnings_lm_test <- 
+  # The modeling work flow
+  earnings_lm_wf %>% 
+  # Use training data to fit the model and apply it to testing data
+  last_fit(data_split)
+
+# performance metrics from testing data
+collect_metrics(earnings_lm_test)
+```
+
+```{r}
+# predictions from testing data
+collect_predictions(earnings_lm_test) 
+```
+
+```{r}
+collect_predictions(earnings_lm_test) %>% 
+  ggplot(aes(x = Earnings_next_year, 
+             y = .pred)) +
+  geom_point(alpha = .5, 
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "darkred") +
+  labs(x = "Actual normalized(earnings)", 
+       y = "Predicted normalized(earnings)")
+```
+
+```{r}
+data(iris)
+
+#sdenormalizeData(values, getNormParameters(values))
+
+collect_predictions(earnings_lm_test) %>% 
+  ggplot(aes(x = denormalizeData(Earnings_next_year, getNormParameters(Earnings_next_year)), 
+             y = denormalizeData(.pred, getNormParameters(.pred)))) +
+  geom_point(alpha = .5, 
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "darkred") +
+  labs(x = "Actual price", 
+       y = "Predicted price") +
+  scale_x_continuous(labels = scales::dollar_format(scale = .000001, 
+                                                    suffix = "M")) +
+  scale_y_continuous(labels = scales::dollar_format(scale = .000001, 
+                                                    suffix = "M"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
