@@ -1,5 +1,6 @@
 ---
 title: "Profit Model"
+author: "Rita Liu"
 output: html_document
 ---
 ```{r}
@@ -42,7 +43,8 @@ return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
                        data = data_training) %>% 
   step_mutate(PE = `MARKET CAP`/EARNINGS
               ) %>%
-  step_interact(terms = ~GDP:starts_with("Sector_")) %>% 
+  step_rm(Sector) %>% 
+  step_mutate(GDP_Financials = GDP_PC1*as.numeric(Sector_Financials)) %>% 
   step_normalize(all_predictors(), 
                  -all_nominal())
 ```
@@ -101,5 +103,27 @@ return_lm_fit_cv %>%
 ```{r}
 collect_metrics(return_lm_fit_cv)
 ```
+```{r}
+prediction <- predict(
+  return_lm_fit,
+  new_data = data_training)
+
+training_pred<-data_training %>% 
+  mutate(.pred = prediction$.pred)
+  
+  
+training_pred %>% 
+  ggplot(aes(x = PROFIT, 
+             y = .pred)) +
+  geom_point(alpha = .5, 
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "darkred") +
+  labs(x = "Actual Return", 
+       y = "Predicted Return")
+```
+
 
 

@@ -29,6 +29,10 @@ theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 ```{r}
 final_data %>% 
   slice(1:5)
+
+# final_data <- final_data %>% 
+#   filter(YEAR<2021) %>% 
+#   select(-YEAR,-COMPANY,-PRICE,-Sell,-Name,-GDP,-M1SL,-Earnings_next_year) 
 ```
 
 ## Spliting Data 
@@ -48,6 +52,14 @@ data_testing <- testing(data_split)
 ranger_recipe <- 
   recipe(formula = PROFIT ~ ., 
          data = data_training)  
+
+# ranger_recipe <- 
+#   recipe(PROFIT ~ ., #short-cut, . = all other vars
+#                        data = data_training) %>% 
+#   step_mutate(PE = `MARKET CAP`/EARNINGS
+#               ) %>%
+#   step_normalize(all_predictors(), 
+#                  -all_nominal())
 ```
 
 ```{r}
@@ -89,4 +101,25 @@ ranger_cv <- ranger_workflow %>%
 collect_metrics(ranger_cv)
 ```
 
+```{r}
+ranger_prediction <- predict(
+  ranger_fit,
+  new_data = data_training)
+
+ranger_training_pred<-data_training %>% 
+  mutate(.pred = prediction$.pred)
+  
+  
+ranger_training_pred %>%
+  ggplot(aes(x = PROFIT,
+             y = .pred)) +
+  geom_point(alpha = .5,
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "darkred") +
+  labs(x = "Actual Return",
+       y = "Predicted Return")
+```
 
