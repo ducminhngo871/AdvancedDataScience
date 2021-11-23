@@ -1,0 +1,120 @@
+---
+title: "XgboostModel"
+author: "Sivhuo Prak (Siv)"
+date: "11/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(stacks)            # for stacking models
+library(glmnet)            # for regularized regression, including LASSO
+library(ranger)            # for random forest model
+library(kknn)              # for knn model
+library(naniar)            # for examining missing values (NAs)
+library(lubridate)         # for date manipulation
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+library(xgboost)
+theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+## Final Data 
+
+```{r}
+final_data %>% 
+  drop_na()
+```
+
+```{r}
+set.seed(327) #for reproducibility
+
+# Randomly assigns 75% of the data to training.
+data_split <- initial_split(final_data, 
+                             prop = .75)
+data_training <- training(data_split)
+data_testing <- testing(data_split)
+```
+
+```{r}
+use_xgboost(PROFIT ~ ., 
+         data = data_training)
+```
+
+```{r}
+boost_recipe <- 
+  recipe(formula = PROFIT ~ ., 
+         data = data_training)
+```
+
+```{r}
+boost_recipe %>% 
+  prep() %>% 
+  juice() 
+```
+```{r}
+boost_spec <- boost_tree(
+  trees = 1000,             # number of trees, T in the equations above
+  tree_depth = 2,          # max number of splits in the tree
+  min_n = 5,               # min points required for node to be further split
+  loss_reduction = 10^-5,  # when to stop - smaller = more since it only has to get a little bit better 
+  sample_size = 1,         # proportion of training data to use
+  learn_rate = tune(),     # lambda from the equations above
+  stop_iter = 50           # number of iterations w/o improvement b4 stopping
+) %>% 
+  set_engine("xgboost", colsample_bytree = 1) %>% #colsample_bytree = proportion of predictors used, 1 = all. Use rather than mtry in boost_tree()
+  set_mode("regression")
+```
+
+```{r}
+boost_grid <- grid_regular(learn_rate(),
+                           levels = 10)
+boost_grid
+```
+
+```{r}
+boost_wf <- workflow() %>% 
+  add_recipe(boost_recipe) %>%
+  add_model(boost_spec)  
+```
+
+```{r}
+set.seed(494)
+val_split <- validation_split(data_training, 
+                              prop = .6)
+val_split
+```
+```{r}
+set.seed(494)
+
+boost_tune <- tune_grid(
+  boost_wf, 
+  val_split,
+  grid = boost_grid,
+  control = control_grid(save_pred = TRUE)
+)
+```
+
+```{r}
+collect_metrics(boost_tune)
+```
+```{r}
+collect_metrics(boost_tune) %>% 
+  filter(.metric == "rmse") %>% 
+  ggplot(aes(x = learn_rate, y = mean)) +
+  geom_point() +
+  geom_line() +
+  scale_x_log10() +
+  labs(y = "rmse") +
+  theme_minimal()
+```
+
+
+
+
