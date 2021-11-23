@@ -26,11 +26,6 @@ theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 ```{r}
 set.seed(327) #for reproducibility
 
-final_data <- final_data %>% 
-  filter(YEAR<2021) %>% 
-  select(-YEAR,-COMPANY,-PRICE,-Sell,-Name,-GDP,-M1SL,-Earnings_next_year) 
-  
-
 data_split <- initial_split(final_data, 
                              prop = .75)
 data_training <- training(data_split)
@@ -41,12 +36,19 @@ final_data
 ```{r}
 return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
                        data = data_training) %>% 
+  # filter to only have data after 2020
+  step_filter(YEAR<2021) %>% 
+  # remove the unwanted variables
+  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Earnings_next_year,Sector) %>% 
+  # add PE 
   step_mutate(PE = `MARKET CAP`/EARNINGS
               ) %>%
-  step_rm(Sector) %>% 
-  step_mutate(GDP_Financials = GDP_PC1*as.numeric(Sector_Financials)) %>% 
+  # Normalize all variables except for GDP
   step_normalize(all_predictors(), 
-                 -all_nominal())
+                 -all_nominal(),
+                 -starts_with("Sector_")) %>% 
+  # Create interaction terms
+  step_interact(terms = ~c(GDP_PC1):starts_with("Sector_"))
 ```
 ```{r}
 return_recipe %>% 
@@ -57,12 +59,16 @@ return_recipe %>%
 ```
 ```{r}
 return_linear_mod <- 
-  # Define a linear regression model
-  linear_reg() %>% 
-  # Set the engine to "lm" (lm() function is used to fit model)
-  set_engine("lm") %>% 
-  # Not necessary here, but good to remember for other models
+  # Define a lasso model 
+  # I believe default is mixture = 1 so probably don't need 
+  linear_reg(mixture = 1) %>% 
+  # Set the engine to "glmnet" 
+  set_engine("glmnet") %>% 
+  # The parameters we will tune.
+  set_args(penalty = tune()) %>% 
+  # Use "regression"
   set_mode("regression")
+
 ```
 ```{r}
 return_lm_wf <- 
@@ -72,40 +78,60 @@ return_lm_wf <-
   add_recipe(return_recipe) %>% 
   # Add the modeling
   add_model(return_linear_mod)
+
+penalty_grid <- grid_regular(penalty(),
+                             levels = 20)
+
+return_cv <- vfold_cv(data_training, v = 5)
+
+return_lm_tune <- 
+  return_lm_wf %>% 
+  tune_grid(
+    resamples = return_cv,
+    grid = penalty_grid
+    )
+
+return_lm_tune %>% 
+  select(id, .metrics) %>% 
+  unnest(.metrics) %>% 
+  filter(.metric == "rmse")
 ```
 ```{r}
-return_lm_fit <- 
-  # Tell it the workflow
-  return_lm_wf %>% 
-  # Fit the model to the training data
-  fit(data_training)
+return_lm_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "rmse") %>% 
+  ggplot(aes(x = penalty, y = mean)) +
+  geom_point() +
+  geom_line() +
+  scale_x_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10",scales::math_format(10^.x))) +
+  labs(x = "penalty", y = "rmse")
+```
 
-# Display the results nicely
-return_lm_fit %>% 
+```{r}
+best_param<-return_lm_tune %>% 
+  select_best(metric = "rmse")
+
+return_lasso_final_wf <- return_lm_wf %>% 
+  finalize_workflow(best_param)
+
+return_lasso_final_mod <- return_lasso_final_wf %>% 
+  fit(data = data_training)
+
+return_lasso_final_mod %>% 
   pull_workflow_fit() %>% 
   tidy() %>% 
-  mutate(across(where(is.numeric), ~round(.x,3))) 
+  arrange(desc(estimate))
 ```
-```{r}
-set.seed(327) # for reproducibility
-return_cv <- vfold_cv(data_training, v = 5)
-return_lm_fit_cv <-
-  # Tell it the workflow
-  return_lm_wf %>% 
-  # Fit the model (using the workflow) to the cv data
-  fit_resamples(return_cv)
 
-# The evaluation metrics for each fold:
-return_lm_fit_cv %>% 
-  select(id, .metrics) %>% 
-  unnest(.metrics) 
-```
 ```{r}
-collect_metrics(return_lm_fit_cv)
+collect_predictions(return_lasso_final_wf)
 ```
+
 ```{r}
 prediction <- predict(
-  return_lm_fit,
+  return_lasso_final_mod,
   new_data = data_training)
 
 training_pred<-data_training %>% 
@@ -121,6 +147,7 @@ training_pred %>%
   geom_abline(slope = 1, 
               intercept = 0, 
               color = "darkred") +
+  geom_text(aes(label = Name),data = training_pred %>% filter(PROFIT>200) )+
   labs(x = "Actual Return", 
        y = "Predicted Return")
 ```
