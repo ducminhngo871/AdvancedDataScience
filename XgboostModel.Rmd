@@ -22,6 +22,7 @@ library(moderndive)        # for King County housing data
 library(vip)               # for variable importance plots
 library(rmarkdown)         # for paged tables
 library(xgboost)
+library(usemodels)
 theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 ```
 
@@ -44,13 +45,18 @@ data_testing <- testing(data_split)
 
 ```{r}
 use_xgboost(PROFIT ~ ., 
-         data = data_training)
+         data = data_training) 
 ```
 
 ```{r}
 boost_recipe <- 
   recipe(formula = PROFIT ~ ., 
-         data = data_training)
+         data = data_training) %>% 
+  step_filter(YEAR<2021) %>% 
+  # remove the unwanted variables
+  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Earnings_next_year,Sector) %>% 
+  # add PE 
+  step_mutate(PE = `MARKET CAP`/EARNINGS)
 ```
 
 ```{r}
@@ -73,8 +79,7 @@ boost_spec <- boost_tree(
 ```
 
 ```{r}
-boost_grid <- grid_regular(learn_rate(),
-                           levels = 10)
+boost_grid <- data.frame(learn_rate = seq(0.01,0.5,length=15)) # change numbers
 boost_grid
 ```
 
@@ -87,7 +92,7 @@ boost_wf <- workflow() %>%
 ```{r}
 set.seed(494)
 val_split <- validation_split(data_training, 
-                              prop = .6)
+                              prop = .8)
 val_split
 ```
 ```{r}
@@ -115,6 +120,48 @@ collect_metrics(boost_tune) %>%
   theme_minimal()
 ```
 
+```{r}
+best_lr <- select_best(boost_tune, "rmse")
+best_lr
+```
+```{r}
+# finalize workflow
+final_boost_wf <- finalize_workflow(
+  boost_wf,
+  best_lr
+)
+
+# fit final
+final_boost <- final_boost_wf %>% 
+  fit(data = data_training)
+
+final_boost %>% 
+  pull_workflow_fit() %>%
+  vip(geom = "col")
+```
+```{r}
+boost_prediction <- predict(
+  final_boost,
+  new_data = data_training)
+
+boost_training_pred<-data_training %>% 
+  mutate(.pred = boost_prediction$.pred)
+  
+  
+boost_training_pred %>%
+  ggplot(aes(x = PROFIT,
+             y = .pred,
+             color = YEAR)) +
+  geom_point(alpha = .5,
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "darkred") +
+  geom_text(aes(label = Name),data = training_pred %>% filter(PROFIT>200))+
+  labs(x = "Actual Return",
+       y = "Predicted Return")
+```
 
 
 

@@ -49,22 +49,20 @@ data_testing <- testing(data_split)
 ## Create the recipe 
 
 ```{r}
-ranger_recipe <- 
-  recipe(formula = PROFIT ~ ., 
-         data = data_training)  
-
-# ranger_recipe <- 
-#   recipe(PROFIT ~ ., #short-cut, . = all other vars
-#                        data = data_training) %>% 
-#   step_mutate(PE = `MARKET CAP`/EARNINGS
-#               ) %>%
-#   step_normalize(all_predictors(), 
-#                  -all_nominal())
+# do I need to normalize? 
+ranger_recipe <-
+  recipe(PROFIT ~ ., #short-cut, . = all other vars
+                       data = data_training) %>%
+  step_filter(YEAR<2021) %>% 
+  # remove the unwanted variables
+  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Earnings_next_year,Sector) %>% 
+  # add PE 
+  step_mutate(PE = `MARKET CAP`/EARNINGS)
 ```
 
 ```{r}
 ranger_spec <- 
-  rand_forest(mtry = 6, 
+  rand_forest(mtry = 10, 
               min_n = 10, 
               trees = 200) %>% 
   set_mode("regression") %>% 
@@ -83,6 +81,14 @@ ranger_fit <- ranger_workflow %>%
   fit(data_training)
 
 ranger_fit
+```
+```{r}
+# OOB error (MSE) ... 
+ranger_fit$fit$fit$fit$prediction.error
+#OOB RMSE
+sqrt(ranger_fit$fit$fit$fit$prediction.error)
+# R squared
+ranger_fit$fit$fit$fit$r.squared
 ```
 
 ```{r}
@@ -107,7 +113,7 @@ ranger_prediction <- predict(
   new_data = data_training)
 
 ranger_training_pred<-data_training %>% 
-  mutate(.pred = prediction$.pred)
+  mutate(.pred = ranger_prediction$.pred)
   
   
 ranger_training_pred %>%
@@ -119,7 +125,10 @@ ranger_training_pred %>%
   geom_abline(slope = 1,
               intercept = 0,
               color = "darkred") +
+  geom_text(aes(label = Name),data = training_pred %>% filter(PROFIT>200) )+
   labs(x = "Actual Return",
        y = "Predicted Return")
+
+```
 ```
 

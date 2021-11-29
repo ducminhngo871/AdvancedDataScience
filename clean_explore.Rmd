@@ -49,7 +49,6 @@ final_data <- final_data %>%
 
 
 
-
 ```{r}
 final_data %>% 
   select(where(is.numeric)) %>% 
@@ -129,6 +128,14 @@ final_data %>%
   facet_wrap(vars(variable), 
              scales = "free", 
              nrow = 4)
+```
+```{r}
+final_data %>%
+  ggplot(aes(x = PROFIT)) +
+  geom_boxplot(aes(color = Sector),
+             alpha = .8,
+             size = 1)
+  
 ```
 
 Question after data exploration:   

@@ -82,7 +82,7 @@ return_lm_wf <-
 penalty_grid <- grid_regular(penalty(),
                              levels = 20)
 
-return_cv <- vfold_cv(data_training, v = 5)
+return_cv <- vfold_cv(data_training, v = 10)
 
 return_lm_tune <- 
   return_lm_wf %>% 
@@ -91,10 +91,10 @@ return_lm_tune <-
     grid = penalty_grid
     )
 
-return_lm_tune %>% 
-  select(id, .metrics) %>% 
-  unnest(.metrics) %>% 
-  filter(.metric == "rmse")
+# return_lm_tune %>% 
+#   select(id, .metrics) %>% 
+#   unnest(.metrics) %>% 
+#   filter(.metric == "rsq")
 ```
 ```{r}
 return_lm_tune %>% 
@@ -122,11 +122,23 @@ return_lasso_final_mod <- return_lasso_final_wf %>%
 return_lasso_final_mod %>% 
   pull_workflow_fit() %>% 
   tidy() %>% 
-  arrange(desc(estimate))
+  arrange(desc(term))
 ```
 
 ```{r}
-collect_predictions(return_lasso_final_wf)
+return_lm_tune %>%
+  select(id, .metrics) %>%
+  unnest(.metrics) %>%
+  filter(.metric == "rsq") %>% 
+  filter(.config == "Preprocessor1_Model19") %>% 
+  summarise(mean_rsq = mean(.estimate))
+
+return_lm_tune %>%
+  select(id, .metrics) %>%
+  unnest(.metrics) %>%
+  filter(.metric == "rmse") %>% 
+  filter(.config == "Preprocessor1_Model19") %>% 
+  summarise(mean_rsq = mean(.estimate))
 ```
 
 ```{r}
