@@ -42,6 +42,12 @@ final_data <- finalDATASET %>%
 ```
 
 ```{r}
+final_data <- final_data %>% 
+  select(-Earnings_next_year)
+```
+
+
+```{r}
 final_data %>% 
   slice(1:5)
 
@@ -86,7 +92,7 @@ ranger_recipe <-
                        data = data_training) %>%
   step_filter(YEAR<2021) %>% 
   # remove the unwanted variables
-  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Earnings_next_year,Sector) %>% 
+  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Sector) %>% 
   # add PE 
   step_mutate(PE = `MARKET CAP`/EARNINGS)
 ```
