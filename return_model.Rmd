@@ -20,6 +20,8 @@ library(rmarkdown)         # for paged tables
 library(readr)
 library(fastDummies)
 library(kableExtra)
+library(DALEX)             # moDel Agnostic Language for Exploration and eXplanation (for model interpretation)  
+library(DALEXtra)
 theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 ```
 
@@ -39,7 +41,7 @@ return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
   # filter to only have data after 2020
   step_filter(YEAR<2021) %>% 
   # remove the unwanted variables
-  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Earnings_next_year,Sector) %>% 
+  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Sector) %>% 
   # add PE 
   step_mutate(PE = `MARKET CAP`/EARNINGS
               ) %>%
@@ -122,7 +124,7 @@ return_lasso_final_mod <- return_lasso_final_wf %>%
 return_lasso_final_mod %>% 
   pull_workflow_fit() %>% 
   tidy() %>% 
-  arrange(desc(term))
+  arrange(desc(estimate))
 ```
 
 ```{r}
@@ -138,7 +140,8 @@ return_lm_tune %>%
   unnest(.metrics) %>%
   filter(.metric == "rmse") %>% 
   filter(.config == "Preprocessor1_Model19") %>% 
-  summarise(mean_rsq = mean(.estimate))
+  summarise(mean_rmse = mean(.estimate))
+# Originally 0.10 + 52
 ```
 
 ```{r}
@@ -152,17 +155,59 @@ training_pred<-data_training %>%
   
 training_pred %>% 
   ggplot(aes(x = PROFIT, 
-             y = .pred)) +
+             y = .pred,
+             color = YEAR)) +
   geom_point(alpha = .5, 
              size = .5) +
   geom_smooth(se = FALSE) +
   geom_abline(slope = 1, 
               intercept = 0, 
               color = "darkred") +
-  geom_text(aes(label = Name),data = training_pred %>% filter(PROFIT>200) )+
+  geom_text(aes(label = Name),label.size = 0.15,data = training_pred %>% filter(PROFIT>400) )+
   labs(x = "Actual Return", 
        y = "Predicted Return")
 ```
 
+```{r}
+lasso_explain <- 
+  explain_tidymodels(
+    model = return_lasso_final_mod,
+    data = data_training %>% select(-PROFIT), 
+    y = data_training %>%  pull(PROFIT),
+    label = "lasso"
+  )
+```
 
+```{r}
+lasso_mod_perf <- model_performance(lasso_explain)
+hist_plot <- 
+  plot(lasso_mod_perf,
+       geom = "histogram")
+box_plot <-
+  plot(lasso_mod_perf,
+       geom = "boxplot")
+
+hist_plot
+box_plot
+
+```
+```{r}
+set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
+lasso_var_imp <- 
+  model_parts(
+    lasso_explain
+    )
+
+plot(lasso_var_imp, show_boxplots = TRUE)
+```
+
+```{r}
+set.seed(494) # since we take a sample of 100 obs
+lasso_pdp <- model_profile(explainer = lasso_explain, 
+                        variables = c("GDP_PC1"))
+
+plot(lasso_pdp, 
+     variables = "GDP_PC1",
+     geom = "profiles")
+```
 
