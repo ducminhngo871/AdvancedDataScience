@@ -1,0 +1,204 @@
+---
+title: "Duc Ngo Part2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(lubridate)         # for dates
+library(moderndive)        # for King County housing data
+library(patchwork)         # for combining plots nicely
+library(rmarkdown)         # for paged tables
+library(h2o)               # use R functions to access the H2O machine learning platform 
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(usemodels)         # for suggesting step_XXX() functions
+library(glmnet)            # for regularized regression, including LASSO
+library(naniar)            # for examining missing values (NAs)
+library(lubridate)         # for date manipulation
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+library(readr)
+library(fastDummies)
+library(kableExtra)
+theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+```{r}
+finalDATASET <- read_csv("FINALDATASET.csv")
+```
+
+```{r}
+final_data <- finalDATASET %>% 
+  dummy_cols(select_columns = "Sector") %>% 
+  # mutate_at(vars(matches("Sector")),~as.factor(.)) %>% 
+  # convert Macro factors from characters to numeric
+  mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
+                as.numeric)) %>% 
+  mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,NA))) %>% 
+  # delete less important factors -> Exchange can possibily be deleted
+  #select(-Name.x,-Sector.x,-observation_date,-Name) %>% 
+  mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor)) 
+
+```
+
+```{r}
+final_data <- final_data %>% 
+  drop_na()
+```
+
+```{r}
+final_data
+```
+### Try AutoML:
+
+```{r}
+set.seed(327) #for reproducibility
+
+data_split <- initial_split(final_data, 
+                             prop = .75)
+data_training <- training(data_split)
+data_testing <- testing(data_split)
+final_data
+```
+```{r}
+return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
+                       data = data_training) %>% 
+  # filter to only have data after 2020
+  step_filter(YEAR<2021) %>% 
+  # remove the unwanted variables
+  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Earnings_next_year,Sector) %>% 
+  # add PE 
+  step_mutate(PE = `MARKET CAP`/EARNINGS
+              ) %>%
+  # Normalize all variables except for GDP
+  step_normalize(all_predictors(), 
+                 -all_nominal(),
+                 -starts_with("Sector_")) %>% 
+  # Create interaction terms
+  step_interact(terms = ~c(GDP_PC1):starts_with("Sector_"))
+```
+
+```{r}
+return_recipe %>% 
+  prep(data_training) %>%
+  # using bake(new_data = NULL) gives same result as juice()
+  # bake(new_data = NULL)
+  juice() 
+```
+```{r}
+return_linear_mod <- 
+  # Define a lasso model 
+  # I believe default is mixture = 1 so probably don't need 
+  linear_reg(mixture = 1) %>% 
+  # Set the engine to "glmnet" 
+  set_engine("glmnet") %>% 
+  # The parameters we will tune.
+  set_args(penalty = tune()) %>% 
+  # Use "regression"
+  set_mode("regression")
+
+```
+```{r}
+return_lm_wf <- 
+  # Set up the workflow
+  workflow() %>% 
+  # Add the recipe
+  add_recipe(return_recipe) %>% 
+  # Add the modeling
+  add_model(return_linear_mod)
+
+penalty_grid <- grid_regular(penalty(),
+                             levels = 20)
+
+return_cv <- vfold_cv(data_training, v = 10)
+
+return_lm_tune <- 
+  return_lm_wf %>% 
+  tune_grid(
+    resamples = return_cv,
+    grid = penalty_grid
+    )
+
+# return_lm_tune %>% 
+#   select(id, .metrics) %>% 
+#   unnest(.metrics) %>% 
+#   filter(.metric == "rsq")
+```
+```{r}
+return_lm_tune %>% 
+  collect_metrics() %>% 
+  filter(.metric == "rmse") %>% 
+  ggplot(aes(x = penalty, y = mean)) +
+  geom_point() +
+  geom_line() +
+  scale_x_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10",scales::math_format(10^.x))) +
+  labs(x = "penalty", y = "rmse")
+```
+
+```{r}
+best_param<-return_lm_tune %>% 
+  select_best(metric = "rmse")
+
+return_lasso_final_wf <- return_lm_wf %>% 
+  finalize_workflow(best_param)
+
+return_lasso_final_mod <- return_lasso_final_wf %>% 
+  fit(data = data_training)
+
+return_lasso_final_mod %>% 
+  pull_workflow_fit() %>% 
+  tidy() %>% 
+  arrange(desc(term))
+```
+
+```{r}
+return_lm_tune %>%
+  select(id, .metrics) %>%
+  unnest(.metrics) %>%
+  filter(.metric == "rsq") %>% 
+  filter(.config == "Preprocessor1_Model19") %>% 
+  summarise(mean_rsq = mean(.estimate))
+
+return_lm_tune %>%
+  select(id, .metrics) %>%
+  unnest(.metrics) %>%
+  filter(.metric == "rmse") %>% 
+  filter(.config == "Preprocessor1_Model19") %>% 
+  summarise(mean_rsq = mean(.estimate))
+```
+
+```{r}
+prediction <- predict(
+  return_lasso_final_mod,
+  new_data = data_training)
+
+training_pred<-data_training %>% 
+  mutate(.pred = prediction$.pred)
+  
+  
+training_pred %>% 
+  ggplot(aes(x = PROFIT, 
+             y = .pred)) +
+  geom_point(alpha = .5, 
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "darkred") +
+  geom_text(aes(label = Name),data = training_pred %>% filter(PROFIT>200) )+
+  labs(x = "Actual Return", 
+       y = "Predicted Return")
+```
+
