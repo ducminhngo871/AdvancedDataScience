@@ -36,14 +36,12 @@ final_data <- finalDATASET %>%
   mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
                 as.numeric)) %>% 
   group_by(YEAR,Sector) %>% 
-  mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,mean(.)))) %>% 
+  mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,median(.)))) %>% 
   # delete less important factors -> Exchange can possibily be deleted
-  #select(-Name.x,-Sector.x,-observation_date,-Name) %>% 
-  mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor)) %>% 
+  ungroup() %>%  
+  mutate(across(c(!where(is.numeric),-"COMPANY",-"Name"),as.factor)) %>% 
   select(-Earnings_next_year) %>% 
-  drop_na() %>% 
-  ungroup()
-
+  drop_na()
 ```
 
 
@@ -93,19 +91,19 @@ final_data %>%
              scales = "free",
              nrow = 3)
  
- # final_data %>% 
- #  select(where(is.numeric)) %>% 
- #  #select(25:36) %>% 
+ # final_data %>%
+ #  select(where(is.numeric)) %>%
+ #  select(25:31) %>%
  #  pivot_longer(cols = everything(),
- #               names_to = "variable", 
- #               values_to = "value") %>% 
+ #               names_to = "variable",
+ #               values_to = "value") %>%
  #  ggplot(aes(x = value)) +
  #  geom_histogram(bins = 30) +
- #  facet_wrap(vars(variable), 
+ #  facet_wrap(vars(variable),
  #             scales = "free",
  #             nrow = 3,
  #             ncol=4)
- # 
+
  #  final_data %>% 
  #  select(where(is.numeric)) %>% 
  #  #select(37:41) %>% 
@@ -142,8 +140,9 @@ final_data %>%
              size = 1)
   
 ```
+```{r}
+final_data %>% 
+  ggplot(aes(x = COGS, y = PROFIT)) + 
+  geom_point()
+```
 
-Question after data exploration:   
-1. There are many rows in SellingAndMrketing Expenses that are -1. Is that a mistake?   
-2. Our predictors and outcomes are very right skewed. Should we do log transformation or generating "fake data" before building the model?   
-3. Are there potential problems with interacting industry dummies with Macro data?   

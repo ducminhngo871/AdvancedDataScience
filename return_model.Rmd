@@ -141,7 +141,7 @@ return_lm_tune %>%
   filter(.metric == "rmse") %>% 
   filter(.config == "Preprocessor1_Model19") %>% 
   summarise(mean_rmse = mean(.estimate))
-# Originally 0.10 + 52
+# Originally 0.14 + 52
 ```
 
 ```{r}
@@ -167,7 +167,43 @@ training_pred %>%
   labs(x = "Actual Return", 
        y = "Predicted Return")
 ```
+## Model evaluation 
+#### Overfitting
+```{r}
+return_lasso_test <- return_lasso_final_wf %>% 
+  last_fit(data_split)
 
+# Metrics for model applied to test data
+return_lasso_test %>% 
+  collect_metrics()
+```
+
+```{r}
+test_prediction <- predict(
+  return_lasso_final_mod,
+  new_data = data_testing)
+
+testing_lasso_pred<-data_testing %>% 
+  mutate(.pred = test_prediction$.pred)
+  
+  
+testing_lasso_pred %>% 
+  ggplot(aes(x = PROFIT, 
+             y = .pred,
+             color = YEAR)) +
+  geom_point(alpha = .5, 
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "darkred") +
+  geom_text(aes(label = Name),label.size = 0.15,data = testing_lasso_pred %>% filter(PROFIT>300) )+
+  labs(x = "Actual Return", 
+       y = "Predicted Return")
+```
+
+
+## Interprete Machine Learning 
 ```{r}
 lasso_explain <- 
   explain_tidymodels(
@@ -199,6 +235,11 @@ lasso_var_imp <-
     )
 
 plot(lasso_var_imp, show_boxplots = TRUE)
+```
+```{r}
+return_lasso_final_mod %>% 
+  pull_workflow_fit() %>% 
+  vip()
 ```
 
 ```{r}

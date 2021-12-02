@@ -28,7 +28,7 @@ theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 
 ```{r}
 final_data %>% 
-  slice(1:5)
+  head(5)
 
 # final_data <- final_data %>% 
 #   filter(YEAR<2021) %>% 
@@ -55,7 +55,7 @@ ranger_recipe <-
                        data = data_training) %>%
   step_filter(YEAR<2021) %>% 
   # remove the unwanted variables
-  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Earnings_next_year,Sector) %>% 
+  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Sector) %>% 
   # add PE 
   step_mutate(PE = `MARKET CAP`/EARNINGS)
 ```
@@ -118,17 +118,48 @@ ranger_training_pred<-data_training %>%
   
 ranger_training_pred %>%
   ggplot(aes(x = PROFIT,
-             y = .pred)) +
+             y = .pred,
+             color = YEAR)) +
   geom_point(alpha = .5,
              size = .5) +
   geom_smooth(se = FALSE) +
   geom_abline(slope = 1,
               intercept = 0,
               color = "darkred") +
-  geom_text(aes(label = Name),data = training_pred %>% filter(PROFIT>200) )+
+  geom_text(aes(label = Name),label.size = 0.1,,data = ranger_training_pred %>% filter(PROFIT>400) )+
   labs(x = "Actual Return",
        y = "Predicted Return")
 
 ```
+
+```{r}
+rf_explain <- 
+  explain_tidymodels(
+    model = ranger_fit,
+    data = data_training %>% select(-PROFIT), 
+    y = data_training %>%  pull(PROFIT),
+    label = "rf"
+  )
+rf_mod_perf <-  model_performance(rf_explain)
+
+hist_plot <- 
+  plot(rf_mod_perf, 
+       geom = "histogram")
+box_plot <-
+  plot(rf_mod_perf, 
+       geom = "boxplot")
+
+hist_plot
+box_plot
 ```
+```{r}
+set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
+rf_var_imp <- 
+  model_parts(
+    rf_explain
+    )
+
+plot(rf_var_imp, show_boxplots = TRUE)
+```
+
 
