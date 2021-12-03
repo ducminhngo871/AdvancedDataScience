@@ -24,11 +24,17 @@ library(rmarkdown)         # for paged tables
 theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 ```
 
+```{r}
+library(randomForest)
+library(mlbench)
+library(caret)
+library(e1071)
+```
+
 ## Final Data 
 
 ```{r}
-final_data %>% 
-  slice(1:5)
+final_data 
 
 # final_data <- final_data %>% 
 #   filter(YEAR<2021) %>% 
@@ -44,6 +50,53 @@ data_split <- initial_split(final_data,
                              prop = .75)
 data_training <- training(data_split)
 data_testing <- testing(data_split)
+data_training 
+```
+
+```{r}
+control <- trainControl(method = 'repeatedcv',
+                        number = 5,
+                        repeats = 3,
+                        search = 'grid')
+#create tunegrid
+tunegrid <- expand.grid(.mtry = c(sqrt(ncol(data_training))))
+modellist <- list()
+
+#train with different ntree parameters
+for (ntree in c(100,150,200,250,300,350,400,450)){
+  set.seed(123)
+  fit <- train(PROFIT~.,
+               data = data_training,
+               method = 'rf',
+               tuneGrid = tunegrid,
+               trControl = control,
+               ntree = ntree)
+  key <- toString(ntree)
+  modellist[[key]] <- fit
+}
+
+#Compare results
+results <- resamples(modellist)
+summary(results)
+```
+
+```{r}
+tuneGrid <- data.frame(
+  .mtry = c(10, 15, 20, 25, 30, 35, 40, 45, 50, 55),
+  .splitrule = "variance",
+  .min.node.size = 5
+)
+
+model <- train(
+  PROFIT ~ .,
+  tuneGrid = tuneGrid, 
+  data = data_training,
+  method = "ranger", 
+  trControl = trainControl(method = "cv", 
+                           number = 5, 
+                           verboseIter = FALSE) 
+)
+model
 ```
 
 ## Create the recipe 
@@ -82,6 +135,7 @@ ranger_fit <- ranger_workflow %>%
 
 ranger_fit
 ```
+
 ```{r}
 # OOB error (MSE) ... 
 ranger_fit$fit$fit$fit$prediction.error
@@ -115,7 +169,7 @@ ranger_prediction <- predict(
 ranger_training_pred<-data_training %>% 
   mutate(.pred = ranger_prediction$.pred)
   
-  
+
 ranger_training_pred %>%
   ggplot(aes(x = PROFIT,
              y = .pred)) +
@@ -125,10 +179,13 @@ ranger_training_pred %>%
   geom_abline(slope = 1,
               intercept = 0,
               color = "darkred") +
-  geom_text(aes(label = Name),data = training_pred %>% filter(PROFIT>200) )+
+  geom_text(aes(label = Name),data = ranger_training_pred %>% filter(PROFIT>200) )+
   labs(x = "Actual Return",
        y = "Predicted Return")
+```
 
-```
-```
+
+
+
+
 
