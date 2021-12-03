@@ -54,33 +54,8 @@ data_training
 ```
 
 ```{r}
-control <- trainControl(method = 'repeatedcv',
-                        number = 5,
-                        repeats = 3,
-                        search = 'grid')
-#create tunegrid
-tunegrid <- expand.grid(.mtry = c(sqrt(ncol(data_training))))
-modellist <- list()
+#Tuning mtry parameter 
 
-#train with different ntree parameters
-for (ntree in c(100,150,200,250,300,350,400,450)){
-  set.seed(123)
-  fit <- train(PROFIT~.,
-               data = data_training,
-               method = 'rf',
-               tuneGrid = tunegrid,
-               trControl = control,
-               ntree = ntree)
-  key <- toString(ntree)
-  modellist[[key]] <- fit
-}
-
-#Compare results
-results <- resamples(modellist)
-summary(results)
-```
-
-```{r}
 tuneGrid <- data.frame(
   .mtry = c(10, 15, 20, 25, 30, 35, 40, 45, 50, 55),
   .splitrule = "variance",
