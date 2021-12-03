@@ -34,11 +34,15 @@ library(e1071)
 ## Final Data 
 
 ```{r}
-final_data 
+#final_data 
 
-# final_data <- final_data %>% 
-#   filter(YEAR<2021) %>% 
-#   select(-YEAR,-COMPANY,-PRICE,-Sell,-Name,-GDP,-M1SL,-Earnings_next_year) 
+final_data <- final_data %>% 
+   filter(YEAR<2021) %>% 
+   select(-PRICE,-Sell,-Earnings_next_year) 
+```
+
+```{r}
+final_data
 ```
 
 ## Spliting Data 
@@ -48,13 +52,15 @@ set.seed(327) #for reproducibility
 # Randomly assigns 75% of the data to training.
 data_split <- initial_split(final_data, 
                              prop = .75)
-data_training <- training(data_split)
+data_training <- training(data_split) 
 data_testing <- testing(data_split)
 data_training 
 ```
 
 ```{r}
 #Tuning mtry parameter 
+
+
 
 tuneGrid <- data.frame(
   .mtry = c(10, 15, 20, 25, 30, 35, 40, 45, 50, 55),
@@ -65,7 +71,7 @@ tuneGrid <- data.frame(
 model <- train(
   PROFIT ~ .,
   tuneGrid = tuneGrid, 
-  data = data_training,
+  data = data_training, 
   method = "ranger", 
   trControl = trainControl(method = "cv", 
                            number = 5, 
@@ -90,7 +96,7 @@ ranger_recipe <-
 
 ```{r}
 ranger_spec <- 
-  rand_forest(mtry = 10, 
+  rand_forest(mtry = 55, 
               min_n = 10, 
               trees = 200) %>% 
   set_mode("regression") %>% 
