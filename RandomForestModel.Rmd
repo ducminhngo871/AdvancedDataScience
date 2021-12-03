@@ -24,11 +24,17 @@ library(rmarkdown)         # for paged tables
 theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 ```
 
+```{r}
+library(randomForest)
+library(mlbench)
+library(caret)
+library(e1071)
+```
+
 ## Final Data 
 
 ```{r}
-final_data %>% 
-  head(5)
+final_data 
 
 # final_data <- final_data %>% 
 #   filter(YEAR<2021) %>% 
@@ -44,6 +50,28 @@ data_split <- initial_split(final_data,
                              prop = .75)
 data_training <- training(data_split)
 data_testing <- testing(data_split)
+data_training 
+```
+
+```{r}
+#Tuning mtry parameter 
+
+tuneGrid <- data.frame(
+  .mtry = c(10, 15, 20, 25, 30, 35, 40, 45, 50, 55),
+  .splitrule = "variance",
+  .min.node.size = 5
+)
+
+model <- train(
+  PROFIT ~ .,
+  tuneGrid = tuneGrid, 
+  data = data_training,
+  method = "ranger", 
+  trControl = trainControl(method = "cv", 
+                           number = 5, 
+                           verboseIter = FALSE) 
+)
+model
 ```
 
 ## Create the recipe 
@@ -82,6 +110,7 @@ ranger_fit <- ranger_workflow %>%
 
 ranger_fit
 ```
+
 ```{r}
 # OOB error (MSE) ... 
 ranger_fit$fit$fit$fit$prediction.error
@@ -115,7 +144,7 @@ ranger_prediction <- predict(
 ranger_training_pred<-data_training %>% 
   mutate(.pred = ranger_prediction$.pred)
   
-  
+
 ranger_training_pred %>%
   ggplot(aes(x = PROFIT,
              y = .pred,
@@ -152,6 +181,7 @@ box_plot <-
 hist_plot
 box_plot
 ```
+
 ```{r}
 set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
 rf_var_imp <- 
