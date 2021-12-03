@@ -1,0 +1,292 @@
+---
+title: "Duc Ngo Stacking"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(tidymodels)        # for modeling ... tidily
+library(stacks)            # for stacking models
+library(glmnet)            # for regularized regression, including LASSO
+library(ranger)            # for random forest model
+library(kknn)              # for knn model
+library(naniar)            # for examining missing values (NAs)
+library(lubridate)         # for date manipulation
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+library(tidyverse)         # for reading in data, graphing, and cleaning
+library(fastDummies)
+theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+## Final Data 
+
+```{r}
+finalDATASET <- read_csv("FINALDATASET.csv")
+```
+
+```{r}
+final_data <- finalDATASET %>% 
+  dummy_cols(select_columns = "Sector") %>% 
+  # mutate_at(vars(matches("Sector")),~as.factor(.)) %>% 
+  # convert Macro factors from characters to numeric
+  mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
+                as.numeric)) %>% 
+  group_by(YEAR,Sector) %>% 
+  mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,median(.)))) %>% 
+  # delete less important factors -> Exchange can possibily be deleted
+  #select(-Name.x,-Sector.x,-observation_date,-Name) %>% 
+  mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor)) %>% 
+  select(-Earnings_next_year, -PRICE, -Sell) %>% 
+  drop_na() %>% 
+  ungroup()
+```
+
+```{r}
+final_data <- final_data %>% 
+  drop_na()
+```
+
+```{r}
+# Randomly assigns 75% of the data to training.
+final_data_split <- initial_split(final_data, 
+                             prop = .75)
+final_data_split
+```
+
+```{r}
+final_data_training <- training(final_data_split)
+final_data_testing <- testing(final_data_split)
+```
+
+```{r}
+ranger_recipe <- 
+  recipe(formula = PROFIT ~ ., 
+         data = final_data_training) %>% 
+  # Make these evaluative variables, not included in modeling
+  update_role(all_of(c("YEAR",
+                       "COMPANY", "Name", "Sector")),
+              new_role = "evaluative")
+```
+
+```{r}
+ranger_spec <- 
+  rand_forest(mtry = 6, 
+              min_n = 10, 
+              trees = 200) %>% 
+  set_mode("regression") %>% 
+  set_engine("ranger")
+```
+
+```{r}
+ranger_workflow <- 
+  workflow() %>% 
+  add_recipe(ranger_recipe) %>% 
+  add_model(ranger_spec) 
+```
+
+```{r}
+ranger_fit <- ranger_workflow %>% 
+  fit(final_data_training)
+```
+
+```{r}
+# OOB error (MSE) ... yeah, it took me a while to find that.
+ranger_fit$fit$fit$fit$prediction.error
+```
+
+```{r}
+#OOB RMSE
+sqrt(ranger_fit$fit$fit$fit$prediction.error)
+```
+
+```{r}
+## RSquare
+ranger_fit$fit$fit$fit$r.squared
+```
+
+
+```{r}
+set.seed(1211) # for reproducibility
+final_data_cv <- vfold_cv(final_data_training, v = 5)
+
+metric <- metric_set(rmse)
+ctrl_res <- control_stack_resamples()
+
+ranger_cv <- ranger_workflow %>% 
+  fit_resamples(final_data_cv, 
+                metrics = metric,
+                control = ctrl_res)
+
+# Evaluation metrics averaged over all folds:
+collect_metrics(ranger_cv)
+```
+
+```{r}
+ranger_workflow %>% 
+  last_fit(final_data_split) %>% 
+  collect_predictions() %>% 
+  ggplot(aes(x = PROFIT, 
+             y = .pred)) +
+  geom_point(alpha = .5, 
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "darkred") +
+  labs(x = "Actual Profit", 
+       y = "Predicted Profit")
+```
+
+### Another new model for stacking: 
+
+```{r}
+# lasso recipe and transformation steps
+lasso_final_data_recipe <- recipe(PROFIT ~ ., 
+                       data = final_data_training) %>% 
+  #step_rm(Name, Sector, YEAR, COMPANY) %>%
+  update_role(all_of(c("Name",
+                       "Sector",
+                       "YEAR", 
+                       "COMPANY")),
+              new_role = "evaluative") %>% 
+  step_dummy(all_nominal(), 
+             -all_outcomes(), 
+             -has_role(match = "evaluative")) %>% 
+  step_normalize(all_predictors(), 
+                 -all_nominal())
+```
+
+```{r}
+#define lasso model
+lasso_mod <- 
+  linear_reg(mixture = 1) %>% 
+  set_engine("glmnet") %>% 
+  set_args(penalty = tune()) %>% 
+  set_mode("regression")
+
+# create workflow
+lasso_wf <- 
+  workflow() %>% 
+  add_recipe(lasso_final_data_recipe) %>% 
+  add_model(lasso_mod)
+
+# penalty grid - changed to 10 levels
+penalty_grid <- grid_regular(penalty(),
+                             levels = 10)
+
+# add ctrl_grid - assures predictions and workflows are saved
+ctrl_grid <- control_stack_grid()
+
+# tune the model using the same cv samples as random forest
+
+lasso_tune <- 
+  lasso_wf %>% 
+  tune_grid(
+    resamples = final_data_cv,
+    grid = penalty_grid,
+    metrics = metric,
+    control = ctrl_grid
+    )
+```
+
+KNN Model: 
+
+```{r}
+# create a model definition
+knn_mod <-
+  nearest_neighbor(
+    neighbors = tune("k")
+  ) %>%
+  set_engine("kknn") %>% 
+  set_mode("regression")
+
+# create the workflow
+knn_wf <- 
+  workflow() %>% 
+  add_model(knn_mod) %>%
+  add_recipe(lasso_final_data_recipe)
+
+# tune it using 4 tuning parameters
+knn_tune <- 
+  knn_wf %>% 
+  tune_grid(
+    final_data_cv,
+    metrics = metric,
+    grid = 4,
+    control = ctrl_grid
+  )
+```
+
+
+### Stacking all together: 
+
+```{r}
+final_data_stack <- 
+  stacks() %>% 
+  add_candidates(ranger_cv) %>% 
+  add_candidates(lasso_tune) %>% 
+  add_candidates(knn_tune)
+```
+
+```{r}
+as_tibble(final_data_stack)
+```
+
+```{r}
+final_data_blend <- 
+  final_data_stack %>% 
+  blend_predictions()
+```
+
+```{r}
+final_data_blend
+```
+
+```{r}
+final_data_blend$metrics %>% 
+  filter(.metric == "rmse")
+```
+
+```{r}
+autoplot(final_data_blend)
+```
+
+```{r}
+autoplot(final_data_blend, type = "members")
+```
+
+
+```{r}
+final_data_final_stack <- final_data_blend %>% 
+  fit_members()
+```
+
+```{r}
+final_data_final_stack %>% 
+  predict(new_data = final_data_testing) %>% 
+  bind_cols(final_data_testing) %>% 
+  select(COMPANY, .pred, PROFIT)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

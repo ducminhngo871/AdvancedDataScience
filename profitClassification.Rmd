@@ -1,7 +1,5 @@
 ---
-title: "RandomForest"
-author: "Sivhuo Prak (Siv)"
-date: "11/19/2021"
+title: "profitClassification"
 output: html_document
 ---
 
@@ -25,20 +23,48 @@ theme_set(theme_minimal()) # my favorite ggplot2 theme :)
 ```
 
 ```{r}
-library(randomForest)
-library(mlbench)
-library(caret)
-library(e1071)
+finalDATASET <- read_csv("FINALDATASET.csv")
+
+final_data <- finalDATASET %>% 
+  dummy_cols(select_columns = "Sector") %>% 
+  # mutate_at(vars(matches("Sector")),~as.factor(.)) %>% 
+  # convert Macro factors from characters to numeric
+  mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
+                as.numeric)) %>% 
+  mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,NA))) %>% 
+  # delete less important factors -> Exchange can possibily be deleted
+  #select(-Name.x,-Sector.x,-observation_date,-Name) %>% 
+  mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor)) 
 ```
 
-## Final Data 
+```{r}
+final_data <- final_data %>% 
+  select(-Earnings_next_year)
+```
 
 ```{r}
-final_data 
+final_data
+```
 
-# final_data <- final_data %>% 
-#   filter(YEAR<2021) %>% 
-#   select(-YEAR,-COMPANY,-PRICE,-Sell,-Name,-GDP,-M1SL,-Earnings_next_year) 
+
+```{r}
+final_data <- final_data %>% 
+  mutate(profit_classification = ifelse(PROFIT > 10, 1, 0)) %>% 
+  select(-profit_classification, -INVESTMENTS, -INVENTORY)
+
+final_data$EARNINGS[is.na(final_data$EARNINGS)]<-median(final_data$EARNINGS,na.rm=TRUE)
+#final_data$INVESTMENTS[is.na(final_data$INVESTMENTS)]<-median(final_data$INVESTMENTS,na.rm=TRUE)
+final_data$DEBTS[is.na(final_data$DEBTS)]<-median(final_data$DEBTS,na.rm=TRUE)
+final_data$COGS[is.na(final_data$COGS)]<-median(final_data$COGS,na.rm=TRUE)
+final_data$SALES[is.na(final_data$SALES)]<-median(final_data$SALES,na.rm=TRUE)
+final_data$CASH[is.na(final_data$CASH)]<-median(final_data$CASH,na.rm=TRUE)
+final_data$RECEIVABLE[is.na(final_data$RECEIVABLE)]<-median(final_data$RECEIVABLE,na.rm=TRUE)
+final_data$INVENTORY[is.na(final_data$INVENTORY)]<-median(final_data$INVENTORY,na.rm=TRUE)
+```
+
+```{r}
+final_data <- final_data %>% 
+  drop_na()
 ```
 
 ## Spliting Data 
@@ -50,28 +76,6 @@ data_split <- initial_split(final_data,
                              prop = .75)
 data_training <- training(data_split)
 data_testing <- testing(data_split)
-data_training 
-```
-
-```{r}
-#Tuning mtry parameter 
-
-tuneGrid <- data.frame(
-  .mtry = c(10, 15, 20, 25, 30, 35, 40, 45, 50, 55),
-  .splitrule = "variance",
-  .min.node.size = 5
-)
-
-model <- train(
-  PROFIT ~ .,
-  tuneGrid = tuneGrid, 
-  data = data_training,
-  method = "ranger", 
-  trControl = trainControl(method = "cv", 
-                           number = 5, 
-                           verboseIter = FALSE) 
-)
-model
 ```
 
 ## Create the recipe 
@@ -136,60 +140,7 @@ ranger_cv <- ranger_workflow %>%
 collect_metrics(ranger_cv)
 ```
 
-```{r}
-ranger_prediction <- predict(
-  ranger_fit,
-  new_data = data_training)
 
-ranger_training_pred<-data_training %>% 
-  mutate(.pred = ranger_prediction$.pred)
-  
 
-ranger_training_pred %>%
-  ggplot(aes(x = PROFIT,
-             y = .pred,
-             color = YEAR)) +
-  geom_point(alpha = .5,
-             size = .5) +
-  geom_smooth(se = FALSE) +
-  geom_abline(slope = 1,
-              intercept = 0,
-              color = "darkred") +
-  geom_text(aes(label = Name),label.size = 0.1,,data = ranger_training_pred %>% filter(PROFIT>400) )+
-  labs(x = "Actual Return",
-       y = "Predicted Return")
-
-```
-
-```{r}
-rf_explain <- 
-  explain_tidymodels(
-    model = ranger_fit,
-    data = data_training %>% select(-PROFIT), 
-    y = data_training %>%  pull(PROFIT),
-    label = "rf"
-  )
-rf_mod_perf <-  model_performance(rf_explain)
-
-hist_plot <- 
-  plot(rf_mod_perf, 
-       geom = "histogram")
-box_plot <-
-  plot(rf_mod_perf, 
-       geom = "boxplot")
-
-hist_plot
-box_plot
-```
-
-```{r}
-set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
-rf_var_imp <- 
-  model_parts(
-    rf_explain
-    )
-
-plot(rf_var_imp, show_boxplots = TRUE)
-```
 
 
