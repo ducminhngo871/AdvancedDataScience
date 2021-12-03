@@ -271,7 +271,8 @@ final_data_final_stack <- final_data_blend %>%
 final_data_final_stack %>% 
   predict(new_data = final_data_testing) %>% 
   bind_cols(final_data_testing) %>% 
-  select(COMPANY, .pred, PROFIT)
+  select(COMPANY, .pred, PROFIT) %>% 
+  filter(.pred > 100)
 ```
 
 

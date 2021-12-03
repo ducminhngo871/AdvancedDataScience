@@ -1,0 +1,17 @@
+---
+title: "Final Project Advanced Data"
+author: "Duc Ngo, Rita Liu, Sivhuo Prak"
+output:
+  html_document:
+    df_print: paged
+    toc: TRUE
+    toc_float: TRUE
+    code_download: true
+    code_folding: hide
+    theme: journal
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
