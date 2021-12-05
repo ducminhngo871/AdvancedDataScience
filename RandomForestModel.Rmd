@@ -46,6 +46,7 @@ final_data
 ```
 
 ## Spliting Data 
+
 ```{r}
 set.seed(327) #for reproducibility
 
@@ -55,29 +56,6 @@ data_split <- initial_split(final_data,
 data_training <- training(data_split) 
 data_testing <- testing(data_split)
 data_training 
-```
-
-```{r}
-#Tuning mtry parameter 
-
-
-
-tuneGrid <- data.frame(
-  .mtry = c(10, 15, 20, 25, 30, 35, 40, 45, 50, 55),
-  .splitrule = "variance",
-  .min.node.size = 5
-)
-
-model <- train(
-  PROFIT ~ .,
-  tuneGrid = tuneGrid, 
-  data = data_training, 
-  method = "ranger", 
-  trControl = trainControl(method = "cv", 
-                           number = 5, 
-                           verboseIter = FALSE) 
-)
-model
 ```
 
 ## Create the recipe 
@@ -149,7 +127,6 @@ ranger_prediction <- predict(
 
 ranger_training_pred<-data_training %>% 
   mutate(.pred = ranger_prediction$.pred)
-  
 
 ranger_training_pred %>%
   ggplot(aes(x = PROFIT,
@@ -161,10 +138,9 @@ ranger_training_pred %>%
   geom_abline(slope = 1,
               intercept = 0,
               color = "darkred") +
-  geom_text(aes(label = Name),label.size = 0.1,,data = ranger_training_pred %>% filter(PROFIT>400) )+
+  geom_text(aes(label = Name),label.size = 0.1,,data = ranger_training_pred %>% filter(PROFIT>400) ) +
   labs(x = "Actual Return",
        y = "Predicted Return")
-
 ```
 
 ```{r}
@@ -194,8 +170,6 @@ rf_var_imp <-
   model_parts(
     rf_explain
     )
-
 plot(rf_var_imp, show_boxplots = TRUE)
 ```
-
 
