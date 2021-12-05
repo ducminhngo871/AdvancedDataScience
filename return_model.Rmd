@@ -91,7 +91,7 @@ return_recipe %>%
   prep(data_training) %>%
   # using bake(new_data = NULL) gives same result as juice()
   # bake(new_data = NULL)
-  juice()
+  juice() 
 ```
 
 ## Building the Lasso model
