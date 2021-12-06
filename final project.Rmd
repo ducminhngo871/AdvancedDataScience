@@ -51,13 +51,15 @@ library(fastDummies)
 ```
 
 
-## Introduction: 
+## Introduction (Siv)
 
 The financial market is a strange place. We have seen Warren Buffett, Ray Dalio, Charlie Munger - the very very best who have had billions of dollars. Others, 95% of the population, lose the money instead. 
 
 So, how are the best of the best pick its stocks? It is from the fundamental, the technical side or the sentimental side? Within this paper, we hope to bring another perspective, using machine learning models to predict the profitability of the stock price. 
 
-## The data 
+### Add the outline of the papaer, how is it gonna be done .... 
+
+## The data (Siv)
 
 For the dataset, we includes financial information on companies in the S&P 500 stock index from 1999-2021. This information was scraped from Yahoo Finance in November of 2021, and collected in a csv format for data analysis. The information includes metrics like sales, earnings, cogs, stock price, and market sector as well as macroeconomic data such as GDP or Money Supply. The goal is to analyze and model this data to better improve projections for a company’s future profitability. The variables in the data set are described below:
 
@@ -94,6 +96,7 @@ final_data %>%
 ```
 
 With this anamiation, we could see that the returns of stocks follow a cycle, which may be influenced by macroeconomic condition. The return in 1999 and 2019 seems to be the highest for all industries. Also, we noticed that some industries vary a lot year to year, such as IT and healthcare industry. 
+
 ```{r eval = FALSE}
 sector_return_an<-final_data %>%
   ggplot(aes(x = PROFIT, y = Sector)) +
@@ -195,6 +198,7 @@ data_testing <- testing(data_split)
 ```
 
 ## Building Recipe
+
 In the lasso model, to account for the fact the macroeconomic condition affects each industry differently, we also included the interaction term between GDP and sector dummies. 
 ```{r}
 return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
@@ -304,14 +308,14 @@ return_lm_tune %>%
   select(id, .metrics) %>%
   unnest(.metrics) %>%
   filter(.metric == "rsq") %>% 
-  filter(.config == "Preprocessor1_Model09") %>% 
+  filter(.config == "Preprocessor1_Model10") %>% 
   summarise(mean_rsq = mean(.estimate))
 
 return_lm_tune %>%
   select(id, .metrics) %>%
   unnest(.metrics) %>%
   filter(.metric == "rmse") %>% 
-  filter(.config == "Preprocessor1_Model09") %>% 
+  filter(.config == "Preprocessor1_Model10") %>% 
   summarise(mean_rmse = mean(.estimate))
 # Originally 0.14 + 52
 ```
@@ -351,6 +355,7 @@ return_lasso_test <- return_lasso_final_wf %>%
 return_lasso_test %>% 
   collect_metrics()
 ```
+
 The following graphs 
 ```{r}
 test_prediction <- predict(
@@ -420,7 +425,6 @@ return_lasso_final_mod %>%
   pull_workflow_fit() %>% 
   vip()
 ```
-
 
 ## Stacking model: 
 
@@ -665,8 +669,186 @@ final_data_final_stack <- final_data_blend %>%
 final_data_final_stack %>% 
   predict(new_data = final_data_testing) %>% 
   bind_cols(final_data_testing) %>% 
-  select(COMPANY, .pred, PROFIT) %>% 
-  filter(.pred > 100)
+  select(COMPANY, .pred, PROFIT) 
+  #filter(.pred > 100, PROFIT < 10) 
 ```
+
+#### ## Building Recipe (Siv Model)
+
+```{r}
+data_training
+```
+
+```{r}
+ranger_recipe <-
+  recipe(PROFIT ~ ., #short-cut, . = all other vars
+                       data = data_training) %>%
+  step_filter(YEAR<2021) %>% 
+  # remove the unwanted variables
+  step_rm(YEAR,Name,GDP,M1SL,Sector) %>% 
+  # add PE 
+  step_mutate(PE = `MARKET CAP`/EARNINGS)
+```
+
+## Building the Lasso model
+```{r}
+ranger_spec <- 
+  rand_forest(mtry = 10, 
+              min_n = 10, 
+              trees = 200) %>% 
+  set_mode("regression") %>% 
+  set_engine("ranger")
+```
+
+```{r}
+ranger_workflow <- 
+  workflow() %>% 
+  add_recipe(ranger_recipe) %>% 
+  add_model(ranger_spec)
+```
+
+```{r}
+ranger_fit <- ranger_workflow %>% 
+  fit(data_training)
+
+ranger_fit
+```
+
+## Random Forest results
+```{r}
+# OOB error (MSE) ... 
+ranger_fit$fit$fit$fit$prediction.error
+#OOB RMSE
+sqrt(ranger_fit$fit$fit$fit$prediction.error)
+# R squared
+ranger_fit$fit$fit$fit$r.squared
+```
+
+## Model Evaluation
+### Prediciton precision (Traning data)
+```{r}
+set.seed(1211) # for reproducibility
+data_cv <- vfold_cv(data_training, v = 5)
+
+metric <- metric_set(rmse)
+ctrl_res <- control_stack_resamples()
+
+ranger_cv <- ranger_workflow %>% 
+  fit_resamples(data_cv, 
+                metrics = metric,
+                control = ctrl_res)
+
+# Evaluation metrics averaged over all folds:
+collect_metrics(ranger_cv)
+```
+
+```{r}
+ranger_prediction <- predict(
+  ranger_fit,
+  new_data = data_training)
+
+ranger_training_pred<-data_training %>% 
+  mutate(.pred = ranger_prediction$.pred)
+  
+  
+ranger_training_pred %>%
+  ggplot(aes(x = PROFIT,
+             y = .pred)) +
+  geom_point(alpha = .5,
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "darkred") +
+  #geom_text(aes(label = Name),data = ranger_training_pred %>% filter(PROFIT>200) )+
+  labs(x = "Actual Return",
+       y = "Predicted Return")
+
+```
+
+### Prediciton precision (Testing data)
+```{r}
+set.seed(1211) # for reproducibility
+data_cv <- vfold_cv(data_testing, v = 5)
+
+metric <- metric_set(rmse)
+ctrl_res <- control_stack_resamples()
+
+ranger_cv <- ranger_workflow %>% 
+  fit_resamples(data_cv, 
+                metrics = metric,
+                control = ctrl_res)
+
+# Evaluation metrics averaged over all folds:
+collect_metrics(ranger_cv)
+```
+
+```{r}
+ranger_test_prediction <- predict(
+  ranger_fit,
+  new_data = data_testing)
+
+ranger_test_pred<-data_testing %>% 
+  mutate(.pred = ranger_test_prediction$.pred)
+  
+  
+ranger_test_pred %>%
+  ggplot(aes(x = PROFIT,
+             y = .pred)) +
+  geom_point(alpha = .5,
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "darkred") +
+  geom_text(aes(label = Name),data = ranger_test_pred %>% filter(PROFIT>200) )+
+  labs(x = "Actual Return",
+       y = "Predicted Return")
+
+```
+
+## Interpretable Machine Learning 
+```{r}
+rf_explain <- 
+  explain_tidymodels(
+    model = ranger_fit,
+    data = data_training %>% select(-PROFIT), 
+    y = data_training %>%  pull(PROFIT),
+    label = "rf"
+  )
+rf_mod_perf <-  model_performance(rf_explain)
+
+hist_plot <- 
+  plot(rf_mod_perf, 
+       geom = "histogram")
+box_plot <-
+  plot(rf_mod_perf, 
+       geom = "boxplot")
+
+hist_plot
+box_plot
+```
+```{r}
+set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
+rf_var_imp <- 
+  model_parts(
+    rf_explain
+    )
+plot(rf_var_imp, show_boxplots = TRUE)
+```
+
+```{r}
+ranger_test_pred %>% 
+  select(Name, .pred, PROFIT) %>% 
+  filter(.pred > 100) %>% 
+  mutate(way_off =  sum(PROFIT < 10 ))
+```
+
+### Conclusion (Rita)
+
+What are the strengths and weaknesses of the model? 
+How can we make it better?
+
+How are we gonna use it in the actual world? In the future? 
 
 

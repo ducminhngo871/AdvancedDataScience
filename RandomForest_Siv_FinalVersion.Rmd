@@ -80,7 +80,6 @@ data_testing <- testing(data_split)
 
 ## Building Recipe
 ```{r}
-# do I need to normalize? 
 ranger_recipe <-
   recipe(PROFIT ~ ., #short-cut, . = all other vars
                        data = data_training) %>%
@@ -206,6 +205,7 @@ ranger_test_pred %>%
        y = "Predicted Return")
 
 ```
+
 ## Interpretable Machine Learning 
 ```{r}
 rf_explain <- 
