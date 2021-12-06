@@ -50,7 +50,7 @@ final_data <- finalDATASET %>%
 
 ```{r}
 final_data <- final_data %>% 
-  select(-Earnings_next_year,-PRICE,-Sell,)
+  select(-Earnings_next_year,-PRICE,-Sell)
 ```
 
 ```{r}
