@@ -36,13 +36,15 @@ library(e1071)
 ```{r}
 #final_data 
 
-final_data <- final_data %>% 
+finalDATASET <- read_csv("FINALDATASET.csv")
+
+finalDATASET <- finalDATASET %>% 
    filter(YEAR<2021) %>% 
    select(-PRICE,-Sell,-Earnings_next_year) 
 ```
 
 ```{r}
-final_data
+finalDATASET
 ```
 
 ## Spliting Data 
@@ -51,7 +53,7 @@ final_data
 set.seed(327) #for reproducibility
 
 # Randomly assigns 75% of the data to training.
-data_split <- initial_split(final_data, 
+data_split <- initial_split(finalDATASET, 
                              prop = .75)
 data_training <- training(data_split) 
 data_testing <- testing(data_split)
