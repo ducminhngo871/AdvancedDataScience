@@ -1,28 +1,53 @@
 ---
 title: "final project Siv"
-output: html_document
+output:
+  html_document:
+    df_print: paged
+    toc: TRUE
+    toc_float: TRUE
+    code_download: true
+    code_folding: hide
+    theme: journal
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+## Introduction 
 
-## R Markdown
+The financial market is a strange place. We have seen Warren Buffett, Ray Dalio, Charlie Munger - the very very best who have had billions of dollars. Others, 95% of the population, lose the money instead. 
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+So, how are the best of the best pick its stocks? It is from the fundamental, the technical side or the sentimental side? Within this paper, we hope to bring another perspective, using machine learning models to predict the profitability of the stock price. 
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+### Outline of the paper 
 
-```{r cars}
-summary(cars)
-```
+We list all of the variables in our dataset below. There is also a data visualization section where we show the distribution of each variable. After exploring the data, we start to process the data. To find the best model, we choose to explore three machine learning models which are Lasso, Random forest and KNN. And then, we use model stacking technique to create a new model by combining all the three models mentioned earlier. Lastly, we will make a conclusion based on the results obtained from these models. 
 
-## Including Plots
+## List of Variables 
 
-You can also embed plots, for example:
+For the dataset, we includes financial information on companies in the S&P 500 stock index from 1999-2021. This information was scraped from Yahoo Finance in November of 2021, and collected in a csv format for data analysis. The information includes metrics like sales, earnings, cogs, stock price, and market sector as well as macroeconomic data such as GDP or Money Supply. The goal is to analyze and model this data to better improve projections for a company’s future profitability. The variables in the data set are described below:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
+| Variable            | Meaning                                                                                                     |
+|---------------------|-------------------------------------------------------------------------------------------------------------|
+| YEAR                | The financial year of the company                                                                           |
+| COMPANY             | The company’s stock abbreviation symbol                                                                     |
+| MARKET.CAP          | The total market capitalization of the company (Volume * Price)                                             |
+| EARNINGS            | The earnings in dollars for the previous year for the given company                                         |
+| SALES               | How much the company sold in dollars last year                                                              |
+| CASH                | How much cash the company has in dollars at the end of the previous year                                    |
+| Name                | The full name of the company                                                                                |
+| Sector              | The name of the sector that the company is a part of                                                        |
+| Earnings_next_year  | The amount of money in dollars that the company earns in the following year  
+      |
+| PRICE               | 
+      |
+| Sell                | 
+      |
+| VOLUME              |   
+      |
+| COGS                | 
+      | 
+| INVESTMENT          |
+      |
+| RECIEVABLE          | 
+      
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
