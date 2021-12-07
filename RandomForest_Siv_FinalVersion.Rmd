@@ -222,7 +222,7 @@ ranger_test_pred %>%
 
 ## Interpretable Machine Learning 
 
-Based on the box-plot and the histogram below, the residuals mostly lie between -50 to 50. But there are some a few outliners that can go up to 400. 
+Based on the box-plot and the histogram below, the residuals mostly lie between -50 to 50. But there are also a few outliners that can go up to 400. 
 
 ```{r}
 rf_explain <- 

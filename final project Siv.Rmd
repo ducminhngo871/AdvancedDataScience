@@ -16,9 +16,9 @@ The financial market is a strange place. We have seen Warren Buffett, Ray Dalio,
 
 So, how are the best of the best pick its stocks? It is from the fundamental, the technical side or the sentimental side? Within this paper, we hope to bring another perspective, using machine learning models to predict the profitability of the stock price. 
 
-### Outline of the paper 
+### Paper Outline 
 
-We list all of the variables in our dataset below. There is also a data visualization section where we show the distribution of each variable. After exploring the data, we start to process the data. To find the best model, we choose to explore three machine learning models which are Lasso, Random forest and KNN. And then, we use model stacking technique to create a new model by combining all the three models mentioned earlier. Lastly, we will make a conclusion based on the results obtained from these models. 
+All the variables in the dataset are listed and explained in the table below. We also have a data visualization section where we show the distribution of each variable. After exploring the data, we start to process the data and build the models. To find the best model, we choose to explore three machine learning models which are LASSO, Random forest and KNN models. Then, we use model stacking technique to create a new model by combining all the three models mentioned earlier. Lastly, we will make a conclusion based on the results obtained from these models. 
 
 ## List of Variables 
 
@@ -34,20 +34,23 @@ For the dataset, we includes financial information on companies in the S&P 500 s
 | CASH                | How much cash the company has in dollars at the end of the previous year                                    |
 | Name                | The full name of the company                                                                                |
 | Sector              | The name of the sector that the company is a part of                                                        |
-| Earnings_next_year  | The amount of money in dollars that the company earns in the following year  
-      |
-| PRICE               | 
-      |
-| Sell                | 
-      |
-| VOLUME              |   
-      |
-| COGS                | 
-      | 
-| INVESTMENT          |
-      |
-| RECIEVABLE          | 
-      
+| Earnings_next_year  | The amount of money in dollars that the company earns in the following year                                 |
+| PRICE               | The price of the stock when it is bought                                                                          | 
+| Sell                | The price of the stock when it is sold                                                                    |
+| VOLUME              | The total number of shares that the company holds                                                           |
+| COGS                | The total amount the company paid as a cost directly related to the sale of products                        | 
+| INVESTMENT          | The total asset or item acquired with the goal of generating income or appreciation                         |
+| RECIEVABLE          | The debts owed to a company by its customers for goods that have been delivered or used but not yet paid for| 
+| INVENTORY           | How much raw materials used in production as well as the goods produced that are available for sale         | 
+| DEBTS               | How much money the company borrow from other parties                                                        | 
+| CPALTT01USM657N_PC1 | The percentage change in CPI (measure of inflation)                                                         | 
+| GDP                 | The monetary value of all finished goods and services made within a country                                 |
+| GDP_PC1             | The percentage change in GDP                                                                                |
+| T10Y2Y              | Ten year treasury bonds minus two year treasury bonds                                                       |
+| M1SL                | The total currency and other liquid instruments in a country's economy                                      |
+| M1SL_PC1            | The percentage change in money supply                                                                       |
+| Earnings_next_year  | How much profit that a company produces next year                                                           | 
+| PROFIT              | How much the money made or lost on an investment                                                            |
 
 
 
