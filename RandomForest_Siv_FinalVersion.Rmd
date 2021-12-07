@@ -9,7 +9,10 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
 ```
 
-## Load the Data
+## Load the Libraries
+
+These are the libraries needed to build the model and execute the code below. 
+
 ```{r}
 library(tidyverse)         # for reading in data, graphing, and cleaning
 library(tidymodels)        # for modeling ... tidily
@@ -19,7 +22,6 @@ library(ranger)            # for random forest model
 library(kknn)              # for knn model
 library(naniar)            # for examining missing values (NAs)
 library(lubridate)         # for date manipulation
-library(moderndive)        # for King County housing data
 library(vip)               # for variable importance plots
 library(rmarkdown)         # for paged tables
 library(usemodels)         # for suggesting step_XXX() functions
@@ -29,22 +31,22 @@ library(fastDummies)
 library(kableExtra)
 library(DALEX)             # moDel Agnostic Language for Exploration and eXplanation (for model interpretation)  
 library(DALEXtra)
-theme_set(theme_minimal()) # my favorite ggplot2 theme :)
+```
+
+```{r}
+theme_set(theme_minimal()) 
 ```
 
 ## Data Processing
+
 ```{r}
 finalDATASET <- read_csv("FINALDATASET.csv")
 
 final_data <- finalDATASET %>% 
   dummy_cols(select_columns = "Sector") %>% 
-  # mutate_at(vars(matches("Sector")),~as.factor(.)) %>% 
-  # convert Macro factors from characters to numeric
   mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
                 as.numeric)) %>% 
   mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,NA))) %>% 
-  # delete less important factors -> Exchange can possibily be deleted
-  #select(-Name.x,-Sector.x,-observation_date,-Name) %>% 
   mutate(across(c(!where(is.numeric),-"COMPANY"),as.factor)) 
 ```
 
@@ -68,6 +70,10 @@ final_data <- final_data %>%
   drop_na()
 ```
 
+## Splitting Data
+
+The dataset is split into two portions (`data_training` and `data_testing`) for training and testing the models. The function below is randomly assigns 75% of the data to training, and 25% for testing. 
+
 ```{r}
 set.seed(327) #for reproducibility
 
@@ -78,43 +84,45 @@ data_training <- training(data_split)
 data_testing <- testing(data_split)
 ```
 
-## Building Recipe
+## Building the Random Forest model
+
+To build the random forest model, we set up recipe using our training data (`data_training`), define model with `mtry = 10`, `min_n = 10` and `numbers of tree = 200`, create ranger workflow, and then we can fit the model. 
+
 ```{r}
+# set up recipe 
 ranger_recipe <-
   recipe(PROFIT ~ ., #short-cut, . = all other vars
                        data = data_training) %>%
   step_filter(YEAR<2021) %>% 
   # remove the unwanted variables
-  step_rm(YEAR,COMPANY,PRICE,Sell,Name,GDP,M1SL,Sector) %>% 
+  step_rm(YEAR,COMPANY,Name,GDP,M1SL,Sector) %>% 
   # add PE 
   step_mutate(PE = `MARKET CAP`/EARNINGS)
-```
 
-## Building the Lasso model
-```{r}
+#define model
 ranger_spec <- 
   rand_forest(mtry = 10, 
               min_n = 10, 
               trees = 200) %>% 
   set_mode("regression") %>% 
   set_engine("ranger")
-```
 
-```{r}
+#create workflow
 ranger_workflow <- 
   workflow() %>% 
   add_recipe(ranger_recipe) %>% 
   add_model(ranger_spec)
-```
 
-```{r}
+#fit the model
+set.seed(712) # for reproducibility - random sampling in random forest choosing number of variables
 ranger_fit <- ranger_workflow %>% 
   fit(data_training)
-
-ranger_fit
 ```
 
 ## Random Forest results
+
+The table below shows the OOB error (MSE), OOB RMSE (Root mean square error), and R squared of the stock return predictions using the random forest model above.
+
 ```{r}
 # OOB error (MSE) ... 
 ranger_fit$fit$fit$fit$prediction.error
@@ -126,6 +134,9 @@ ranger_fit$fit$fit$fit$r.squared
 
 ## Model Evaluation
 ### Prediciton precision (Traning data)
+
+Even though the mean rmse from the random forest (38.01155) seems to be fairly high but it is still lower than the LASSO model. Thus, random forest model performs better. 
+
 ```{r}
 set.seed(1211) # for reproducibility
 data_cv <- vfold_cv(data_training, v = 5)
@@ -141,6 +152,7 @@ ranger_cv <- ranger_workflow %>%
 # Evaluation metrics averaged over all folds:
 collect_metrics(ranger_cv)
 ```
+We also plot a graph showing the actual return vs predicted return. 
 
 ```{r}
 ranger_prediction <- predict(
@@ -160,12 +172,14 @@ ranger_training_pred %>%
   geom_abline(slope = 1,
               intercept = 0,
               color = "darkred") +
-  geom_text(aes(label = Name),data = ranger_training_pred %>% filter(PROFIT>200) )+
   labs(x = "Actual Return",
        y = "Predicted Return")
 
 ```
 ### Prediciton precision (Testing data)
+
+The table below shows the rmse on testing data. It is a bit higher but fairly similar to the error on training data so we could say that our model did not overfit. 
+
 ```{r}
 set.seed(1211) # for reproducibility
 data_cv <- vfold_cv(data_testing, v = 5)
@@ -181,6 +195,7 @@ ranger_cv <- ranger_workflow %>%
 # Evaluation metrics averaged over all folds:
 collect_metrics(ranger_cv)
 ```
+Below is the graph showing the actual return vs. predicted return on testing data. 
 
 ```{r}
 ranger_test_prediction <- predict(
@@ -200,13 +215,15 @@ ranger_test_pred %>%
   geom_abline(slope = 1,
               intercept = 0,
               color = "darkred") +
-  geom_text(aes(label = Name),data = ranger_test_pred %>% filter(PROFIT>200) )+
   labs(x = "Actual Return",
        y = "Predicted Return")
 
 ```
 
 ## Interpretable Machine Learning 
+
+Based on the box-plot and the histogram below, the residuals mostly lie between -50 to 50. But there are some a few outliners that can go up to 400. 
+
 ```{r}
 rf_explain <- 
   explain_tidymodels(
@@ -227,6 +244,8 @@ box_plot <-
 hist_plot
 box_plot
 ```
+According to the feature importance bar chart below, we can see that the top three important features are market cap, earnings, M1SL_PC1, and GDP_PC1. 
+
 ```{r}
 set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
 rf_var_imp <- 
