@@ -864,7 +864,7 @@ final_data_final_stack %>%
   bind_cols(final_data_2021) %>% 
   select(Name, .pred) %>% 
   arrange(desc(.pred)) %>% 
-  head(10)
+  head(20)
 ```
 
 ### Conclusion (Rita)
