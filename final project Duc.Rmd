@@ -300,6 +300,7 @@ return_lasso_final_mod <- return_lasso_final_wf %>%
 
 ## Lasso results
 The table below shows the estimate of each predictor in the Lasso Model.  We can see that indicators in macroeconomics are relatively important to predict the stock return. The change in inflation and GDP all remain significant after shrinking. The interaction terms between GDP and industries also showed importance, accounting for the fact that the macroeconomic condition affects each industry differently: it seems to affect the stock return in Communication Services, Energy, and Consumer Discretionary sectors less. 
+
 ```{r}
 return_lasso_final_mod %>% 
   pull_workflow_fit() %>% 
@@ -358,6 +359,7 @@ training_pred %>%
 ```
 
 ### Overfitting
+
 Below shows the r-square and rmse on testing data. They are very similar to those on trainning data so we would safely conclude that our model did not overfit. 
 ```{r}
 return_lasso_test <- return_lasso_final_wf %>% 
@@ -368,9 +370,8 @@ return_lasso_test %>%
   collect_metrics()
 ```
 
-### What did the graph say? 
+The following graphs show the performance of the model on the testing data: 
 
-The following graphs 
 ```{r}
 test_prediction <- predict(
   return_lasso_final_mod,
@@ -395,7 +396,6 @@ testing_lasso_pred %>%
        y = "Predicted Return") + 
   scale_color_viridis_b()
 ```
-
 
 ## Interpretable Machine Learning 
 Again, the boxplot and the histogram of residuals, the model does not predict the return well and this may because some extreme values. 
