@@ -825,19 +825,16 @@ return_lm_tune %>%
 
 OOB RMSE: 
 ```{r}
-<<<<<<< HEAD
 #OOB RMSE
 data.frame(mean_rmse = sqrt(ranger_fit$fit$fit$fit$prediction.error),
 # R squared
 mean_rsq = ranger_fit$fit$fit$fit$r.squared)
-=======
 sqrt(ranger_fit$fit$fit$fit$prediction.error)
 ```
 
 R squared: 
 ```{r}
 ranger_fit$fit$fit$fit$r.squared
->>>>>>> fbd927b990f2f8322f356350319cc699fdfd1395
 ```
 
 #### Stacking Model 
