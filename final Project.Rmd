@@ -502,19 +502,16 @@ The table below shows the OOB error (MSE), OOB RMSE (Root mean square error), an
 
 OOB error: 
 ```{r}
-# OOB error (MSE) ... 
 ranger_fit$fit$fit$fit$prediction.error
 ```
 
 OOB RMSE: 
 ```{r}
-#OOB RMSE
 sqrt(ranger_fit$fit$fit$fit$prediction.error)
 ```
 
-R Squared
+R Squared: 
 ```{r}
-# R squared
 ranger_fit$fit$fit$fit$r.squared
 ```
 
@@ -837,10 +834,13 @@ return_lm_tune %>%
 
 #### Random Forest Model
 
+OOB RMSE: 
 ```{r}
-#OOB RMSE
 sqrt(ranger_fit$fit$fit$fit$prediction.error)
-# R squared
+```
+
+R squared: 
+```{r}
 ranger_fit$fit$fit$fit$r.squared
 ```
 
