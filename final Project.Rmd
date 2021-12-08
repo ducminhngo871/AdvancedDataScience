@@ -493,12 +493,18 @@ ranger_fit <- ranger_workflow %>%
 
 The table below shows the OOB error (MSE), OOB RMSE (Root mean square error), and R squared of the stock return predictions using the random forest model above.
 
+OOB error: 
 ```{r}
-# OOB error (MSE) ... 
 ranger_fit$fit$fit$fit$prediction.error
-#OOB RMSE
+```
+
+OOB RMSE: 
+```{r}
 sqrt(ranger_fit$fit$fit$fit$prediction.error)
-# R squared
+```
+
+R Squared: 
+```{r}
 ranger_fit$fit$fit$fit$r.squared
 ```
 
@@ -817,11 +823,21 @@ return_lm_tune %>%
 
 #### Random Forest Model
 
+OOB RMSE: 
 ```{r}
+<<<<<<< HEAD
 #OOB RMSE
 data.frame(mean_rmse = sqrt(ranger_fit$fit$fit$fit$prediction.error),
 # R squared
 mean_rsq = ranger_fit$fit$fit$fit$r.squared)
+=======
+sqrt(ranger_fit$fit$fit$fit$prediction.error)
+```
+
+R squared: 
+```{r}
+ranger_fit$fit$fit$fit$r.squared
+>>>>>>> fbd927b990f2f8322f356350319cc699fdfd1395
 ```
 
 #### Stacking Model 
