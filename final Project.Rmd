@@ -29,7 +29,6 @@ library(transformr)       # for "tweening" (gganimate)
 library(gifski)           # need the library for creating gifs but don't need to load each time
 library(shiny)            # for creating interactive apps
 library(janitor)  
-library(treemapify)
 library(stacks)            # for stacking models
 library(glmnet)            # for regularized regression, including LASSO
 library(ranger)            # for random forest model
@@ -54,11 +53,11 @@ The financial market is a strange place that is very hard to navigate around. We
 
 So, how are the best of the best pick its stocks? It is from the fundamental, the technical side or the sentimental side? Within this paper, we hope to bring another perspective, using machine learning models to predict the profitability of the stock price. 
 
-## Paper Outline 
+### Paper Outline 
 
 First, we will list and explain the definition of each variable in our dataset. There are 25 variables in total as listed below. The variable we are going to predict is `PROFIT`. Then, we will start to process our data by merging with the macro data and removing some unwanted variables. After processing the data, we will have a data visualization section that shows the distribution and relationship between some variables. And to find the best model, we choose to explore three machine learning models which are LASSO, Random forest and Stacking models. We use a stacking method to create the stacking model by combining three models (Lasso, Random Forest, and KNN). Lastly, we will make a stock return prediction for 2021 using the trained model with the lowest R-squared and RMSE. 
 
-## List of Variables 
+### List of Variables 
 
 For the dataset, we includes financial information on companies in the S&P 500 stock index from 1999-2021. This information was scraped from Yahoo Finance in November of 2021, and collected in a csv format for data analysis. The information includes metrics like sales, earnings, cogs, stock price, and market sector as well as macroeconomic data such as GDP or Money Supply. The goal is to analyze and model this data to better improve projections for a company’s future profitability. The variables in the data set are described below:
 
@@ -90,15 +89,15 @@ For the dataset, we includes financial information on companies in the S&P 500 s
 | Earnings_next_year  | How much profit that a company produces next year                                                           | 
 | PROFIT              | How much the money made or lost on an investment                                                            |
 
-## Modeling data
+### Loading data
 
 ```{r}
 finalDATASET <- read_csv("FINALDATASET.csv")
 macro_data <- read_csv("clean_macro - Sheet1.csv")
 ```
 
-## Data Processing 
-
+## Data Preprocessing 
+For the data preprocessing, we combined our data sources and filled missing values for some fundamental factors by using the median of that value in the sector for a certain year. We also created sector dummies in this step. We then dropped some variables that are not in our interests and the splited the testing and trainning data. 
 ```{r}
 final_data <- finalDATASET %>% 
   # make Sector dummy variables
@@ -124,23 +123,25 @@ final_data <- finalDATASET %>%
   mutate(across(c(!where(is.numeric),-"Name"),as.factor)) %>% 
   select(-Earnings_next_year,-observation_date) %>% 
   drop_na() 
-```
 
-```{r}
+# filter out the data for 2021
 final_data_2021 <- final_data %>% 
   filter(YEAR == 2021)
 
 final_data <- final_data %>% 
   filter(YEAR < 2021)
-```
 
-```{r}
+# split the data
 set.seed(327) #for reproducibility
 
 data_split <- initial_split(final_data, 
                              prop = .75)
 data_training <- training(data_split)
 data_testing <- testing(data_split)
+
+# quick look of the data 
+final_data %>% 
+  head(5)
 ```
 
 ## Data Visualization
@@ -177,9 +178,6 @@ sector_return_an<-final_data %>%
   transition_states(YEAR)
   
 animate(sector_return_an, duration = 25)
-```
-
-```{r eval=FALSE}
 anim_save("sector_return.gif")
 ```
 
@@ -241,9 +239,7 @@ return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
                  -starts_with("Sector_")) %>% 
   # Create interaction terms
   step_interact(terms = ~c(GDP_PC1):starts_with("Sector_")) 
-```
-
-```{r}
+# show the data in recipe
 return_recipe %>% 
   prep(data_training) %>%
   # using bake(new_data = NULL) gives same result as juice()
@@ -251,7 +247,7 @@ return_recipe %>%
   juice() 
 ```
 
-### Building the Lasso model
+### Select tuning parameter
 
 ```{r}
 return_linear_mod <- 
@@ -264,9 +260,8 @@ return_linear_mod <-
   set_args(penalty = tune()) %>% 
   # Use "regression"
   set_mode("regression")
-```
 
-```{r}
+set.seed(456)
 return_lm_wf <- 
   # Set up the workflow
   workflow() %>% 
@@ -287,9 +282,17 @@ return_lm_tune <-
     grid = penalty_grid
     )
 
-```
+best_param<-return_lm_tune %>% 
+  select_best(metric = "rmse")
 
-```{r}
+return_lasso_final_wf <- return_lm_wf %>% 
+  finalize_workflow(best_param)
+
+return_lasso_final_mod <- return_lasso_final_wf %>% 
+  fit(data = data_training)
+
+# visulization for best param
+set.seed(456)
 return_lm_tune %>% 
   collect_metrics() %>% 
   filter(.metric == "rmse") %>% 
@@ -302,17 +305,7 @@ return_lm_tune %>%
   labs(x = "penalty", y = "rmse")
 ```
 
-### Select tuning parameter
-```{r}
-best_param<-return_lm_tune %>% 
-  select_best(metric = "rmse")
 
-return_lasso_final_wf <- return_lm_wf %>% 
-  finalize_workflow(best_param)
-
-return_lasso_final_mod <- return_lasso_final_wf %>% 
-  fit(data = data_training)
-```
 
 ### Lasso results
 
@@ -325,7 +318,7 @@ return_lasso_final_mod %>%
   arrange(desc(estimate)) %>% 
   kbl() %>% 
   kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed")) %>% 
-  scroll_box()
+  scroll_box(width = "100%", height = "500px")
 ```
 
 ### Model Evaluation
@@ -339,18 +332,19 @@ return_lm_tune %>%
   select(id, .metrics) %>%
   unnest(.metrics) %>%
   filter(.metric == "rsq") %>% 
-  filter(.config == "Preprocessor1_Model10") %>% 
+  filter(.config == "Preprocessor1_Model08") %>% 
   summarise(mean_rsq = mean(.estimate))
 
 return_lm_tune %>%
   select(id, .metrics) %>%
   unnest(.metrics) %>%
   filter(.metric == "rmse") %>% 
-  filter(.config == "Preprocessor1_Model10") %>% 
+  filter(.config == "Preprocessor1_Model08") %>% 
   summarise(mean_rmse = mean(.estimate))
 ```
 
 ```{r eval = FALSE}
+set.seed(456)
 prediction <- predict(
   return_lasso_final_mod,
   new_data = data_training)
@@ -444,7 +438,6 @@ box_plot
 Below shows the feature importance plots generated by two different methods. We could see that macroeconomic indicators remained importance in both of the plots but market cap seems to be an crucial factor when we use permutation method.
 
 ```{r}
-# Why year and sector are still in it??
 set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
 lasso_var_imp <- 
   model_parts(
@@ -664,9 +657,7 @@ ranger_workflow <-
 
 ranger_fit <- ranger_workflow %>% 
   fit(data_training)
-```
 
-```{r}
 set.seed(1211) # for reproducibility
 final_data_cv <- vfold_cv(data_training, v = 5)
 
@@ -695,9 +686,7 @@ lasso_final_data_recipe <- recipe(PROFIT ~ .,
              -has_role(match = "evaluative")) %>% 
   step_normalize(all_predictors(), 
                  -all_nominal())
-```
 
-```{r}
 #define lasso model
 lasso_mod <- 
   linear_reg(mixture = 1) %>% 
@@ -811,37 +800,41 @@ With the three models, we then move on to see which model performs the best:
 
 #### Lasso model
 ```{r}
-return_lm_tune %>%
+data_frame(return_lm_tune %>%
   select(id, .metrics) %>%
   unnest(.metrics) %>%
   filter(.metric == "rsq") %>% 
-  filter(.config == "Preprocessor1_Model10") %>% 
-  summarise(mean_rsq = mean(.estimate))
+  filter(.config == "Preprocessor1_Model08") %>% 
+  summarise(mean_rsq = mean(.estimate)),
 
 return_lm_tune %>%
   select(id, .metrics) %>%
   unnest(.metrics) %>%
   filter(.metric == "rmse") %>% 
-  filter(.config == "Preprocessor1_Model10") %>% 
-  summarise(mean_rmse = mean(.estimate))
+  filter(.config == "Preprocessor1_Model08") %>% 
+  summarise(mean_rmse = mean(.estimate)))
 ```
 
 #### Random Forest Model
 
 ```{r}
 #OOB RMSE
-sqrt(ranger_fit$fit$fit$fit$prediction.error)
+data.frame(mean_rmse = sqrt(ranger_fit$fit$fit$fit$prediction.error),
 # R squared
-ranger_fit$fit$fit$fit$r.squared
+mean_rsq = ranger_fit$fit$fit$fit$r.squared)
 ```
 
 #### Stacking Model 
 
 ```{r}
 # Stacking model: 
-final_data_blend$metrics %>% 
+data.frame(final_data_blend$metrics %>% 
   filter(.metric == "rmse") %>% 
-  summarise(mean(mean))
+  summarise(mean_rmse = mean(mean)),
+
+final_data_blend$metrics %>% 
+  filter(.metric == "rsq") %>% 
+  summarise(mean_rsq = mean(mean)))
 ```
 Here, we can see that compared to the three models, stacking model performs the best. With that in mind, even though random forest also performs slightly similar, as we use random forest in the stacking model, we will choose stacking model as our model choice. 
 
@@ -850,12 +843,19 @@ Here, we can see that compared to the three models, stacking model performs the 
 After picking our model, we then move on to use the model to predict the potential profit for 2021: 
 
 ```{r}
+ytd = c(80.30, 137.04, 22.08, 39.77, 59.58, 132.51, -8.26, 39.77, -4.22, 20.76, 26.34, 26.41, 178.43, 41.50, 87.29, 18.70, 52.58, 0.51, -6.16, 4.10)
+set.seed(456)
 final_data_final_stack %>% 
   predict(new_data = final_data_2021) %>% 
   bind_cols(final_data_2021) %>% 
   select(Name, .pred) %>% 
   arrange(desc(.pred)) %>% 
-  head(20)
+  head(20) %>% 
+  mutate(actual_ytd = ytd) %>% 
+  kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed")) %>% 
+  scroll_box(width = "100%", height = "500px")
+  
 ```
 
 ## Conclusion 
