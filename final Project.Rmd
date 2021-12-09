@@ -145,8 +145,40 @@ final_data %>%
 ```
 
 ## Data Visualization
+We first explored distributions of our predictors and outcome. As the following graph suggested, all the numeric variables are severely right-skewed with some outliers. In our data, though the numbers of firms in each sector are unbalanced, we got a decent amount of data for each sector.  
+```{r}
 
-By observation, we can't see a strong correlation between fundemental factors, such as investments and debts, and stock return. It may indicate that linear model is not an ideal model in this case. 
+  final_data %>% 
+  select(where(is.numeric)) %>% 
+  select(-starts_with("Sector_")) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "variable", 
+               values_to = "value") %>% 
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(vars(variable), 
+             scales = "free",
+             nrow = 4,
+             ncol=5)
+
+```
+```{r}
+final_data %>% 
+  select(where(is.factor)) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "variable", 
+               values_to = "value") %>% 
+  ggplot(aes(x = value)) +
+  geom_bar() +
+  facet_wrap(vars(variable), 
+             scales = "free", 
+             nrow = 4) + 
+  theme(axis.text.x = element_text(angle = 45))
+
+```
+
+  
+Then, we continued to explore the relationship between regressors and the outcome. By observation, we can't see a strong correlation between fundemental factors, such as investments and debts, and stock return. It may indicate that linear model is not an ideal model in this case. 
 
 ```{r}
 final_data %>% 
@@ -309,7 +341,7 @@ return_lm_tune %>%
 
 ### Lasso results
 
-The table below shows the estimate of each predictor in the Lasso Model.  We can see that indicators in macroeconomics are relatively important to predict the stock return. The change in inflation and GDP all remain significant after shrinking. The interaction terms between GDP and industries also showed importance, accounting for the fact that the macroeconomic condition affects each industry differently: it seems to affect the stock return in Communication Services, Energy, and Consumer Discretionary sectors less. 
+The table below shows the estimate of each predictor in the Lasso Model.  We can see that indicators in macroeconomics are relatively important to predict the stock return. The change in inflation and GDP all remain significant after shrinking. The interaction terms between GDP and industries also showed importance, accounting for the fact that the macroeconomic condition affects each industry differently: GDP seems to affect the stock return in Communication Services, Energy, and Consumer Discretionary sectors less. 
 
 ```{r}
 return_lasso_final_mod %>% 
@@ -325,7 +357,7 @@ return_lasso_final_mod %>%
 
 #### Prediciton precision 
 
-The Lasso model does not perform well. It only explains 18% of the varaince in stock return and it also has a relatively high rmse of around 46. 
+The Lasso model does not perform well. It only explains 20% of the varaince in stock return and it also has a relatively high rmse of around 46. 
 
 ```{r}
 return_lm_tune %>%
@@ -777,7 +809,7 @@ final_data_blend
 ```{r}
 final_data_blend$metrics %>% 
   filter(.metric == "rmse") %>% 
-  summarise(mean(mean))
+  summarise(mean_rmse = mean(mean))
 ```
 
 ```{r}
@@ -823,19 +855,13 @@ return_lm_tune %>%
 
 #### Random Forest Model
 
-OOB RMSE: 
 ```{r}
 #OOB RMSE
 data.frame(mean_rmse = sqrt(ranger_fit$fit$fit$fit$prediction.error),
 # R squared
 mean_rsq = ranger_fit$fit$fit$fit$r.squared)
-sqrt(ranger_fit$fit$fit$fit$prediction.error)
 ```
 
-R squared: 
-```{r}
-ranger_fit$fit$fit$fit$r.squared
-```
 
 #### Stacking Model 
 
@@ -858,16 +884,19 @@ After picking our model, we then move on to use the model to predict the potenti
 ```{r}
 ytd = c(80.30, 137.04, 22.08, 39.77, 59.58, 132.51, -8.26, 39.77, -4.22, 20.76, 26.34, 26.41, 178.43, 41.50, 87.29, 18.70, 52.58, 0.51, -6.16, 4.10)
 set.seed(456)
-final_data_final_stack %>% 
+pred_2021<-final_data_final_stack %>% 
   predict(new_data = final_data_2021) %>% 
   bind_cols(final_data_2021) %>% 
   select(Name, .pred) %>% 
   arrange(desc(.pred)) %>% 
   head(20) %>% 
-  mutate(actual_ytd = ytd) %>% 
+  mutate(actual_ytd = ytd) 
+pred_2021 %>% 
   kbl() %>% 
   kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed")) %>% 
-  scroll_box(width = "100%", height = "500px")
+  column_spec(c(1,3), color = ifelse(pred_2021$actual_ytd < 0, "red", "black")) %>% 
+  scroll_box(width = "100%", height = "500px") 
+  
   
 ```
 
