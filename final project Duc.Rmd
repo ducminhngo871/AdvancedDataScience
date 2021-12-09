@@ -183,7 +183,7 @@ final_data <- finalDATASET %>%
   # delete less important factors -> Exchange can possibily be deleted
   ungroup() %>%  
   mutate(across(c(!where(is.numeric),-"Name"),as.factor)) %>% 
-  select(-Earnings_next_year,-observation_date) %>% 
+  select(-Earnings_next_year, -observation_date) %>% 
   drop_na() 
 ```
 
