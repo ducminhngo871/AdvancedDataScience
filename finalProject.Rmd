@@ -6,13 +6,13 @@ output:
     df_print: paged
     toc: TRUE
     toc_float: TRUE
-    code_download: true
+    code_download: false
     code_folding: hide
-    theme: journal
+    theme: cerulean
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
 ```
 
 ```{r}
@@ -541,13 +541,13 @@ plot(rf_var_imp, show_boxplots = TRUE)
 
 According to the feature importance bar chart below, we can see that the top three important features are market cap, earnings, M1SL_PC1, and GDP_PC1. 
 
-### Stacking model: 
+## Stacking model
 
-#### Definition: 
+### Definition 
 
 What is stacking? Model stacking is an ensembling method that takes the outputs of many models and combines them to generate a new model—referred to as an ensemble in this package—that generates predictions informed by each of its members.
 
-#### Here process of stacking model:
+### The process of stacking model
 
 Stacking model involves three separate steps: 
 
@@ -567,8 +567,6 @@ Stacking model involves three separate steps:
 - To generate ensemble predictions, first generate predictions from the base learners.
 
 - Feed those predictions into the meta learner to generate the ensemble prediction.
-
-### Random Forest Model 
 
 ```{r}
 ranger_recipe <- 
@@ -605,7 +603,6 @@ ranger_cv <- ranger_workflow %>%
                 control = ctrl_res)
 ```
 
-### LASSO Model 
 
 ```{r}
 # lasso recipe and transformation steps
@@ -654,8 +651,6 @@ lasso_tune <-
     )
 ```
 
-### KNN Model
-
 ```{r}
 # create a model definition
 knn_mod <-
@@ -681,9 +676,6 @@ knn_tune <-
     control = ctrl_grid
   )
 ```
-
-
-### Stacking all three models 
 
 ```{r}
 final_data_stack <- 
@@ -718,6 +710,8 @@ final_data_final_stack <- final_data_blend %>%
   fit_members()
 ```
 
+### The result of the stacking model: 
+
 ```{r}
 final_data_final_stack %>% 
   predict(new_data = data_testing) %>% 
@@ -727,7 +721,9 @@ final_data_final_stack %>%
   head(10)
 ```
 
-Here, we can see that when the model predicts company with high rate of return, the model performs really well. 
+Here, we can see that when the model predicts company with high rate of return, the model performs really well. Based on the table, every company within the highest prediction yields positive and extremely high rate of return. 
+
+After finishing our model, we then move on to compare the three models: 
 
 ### Comparison of the three models
 
@@ -772,6 +768,7 @@ final_data_blend$metrics %>%
   filter(.metric == "rsq") %>% 
   summarise(mean_rsq = mean(mean)))
 ```
+
 Here, we can see that compared to the three models, even though Random Forest performs better than the stacking model, stacking model use features in the Random Forest along with additional features from KNN and lasso. With that reason, we will choose stacking model as our model choice. 
 
 ## Stock Return Prediction for 2021
@@ -795,6 +792,8 @@ pred_2021 %>%
   column_spec(c(1,3), color = ifelse(pred_2021$actual_ytd < 0, "red", "darkgreen")) %>% 
   scroll_box(width = "100%", height = "500px") 
 ```
+
+As we can see from the stock return prediction, our final model performs really well. For the top 20 companies, only four generates loss year-to-date. Moreover, if we invest the same amount of money for the top 20 companies, we will have a 47.35% rate of return year-to-date. This is much higher than the YTD return for the S&P 500 of 29.19%.
 
 ## Conclusion 
 
