@@ -93,8 +93,6 @@ finalDATASET <- read_csv("FINALDATASET.csv")
 macro_data <- read_csv("clean_macro - Sheet1.csv")
 ```
 
-## Data Preprocessing 
-For the data preprocessing, we combined our data sources and filled missing values for some fundamental factors by using the median of that value in the sector for a certain year. We also created sector dummies in this step. We then dropped some variables that are not in our interests and the splited the testing and trainning data. 
 ```{r}
 final_data <- finalDATASET %>% 
   # make Sector dummy variables
@@ -354,7 +352,8 @@ testing_lasso_pred %>%
   scale_color_viridis_b()
 ```
 
-## Random Forest Model 
+## Stock Return Prediction Using Random Forest  
+### A Brief Overview on Random Forest
 
 A random forest is a supervised machine learning algorithm that is constructed from decision tree algorithms. It can be used to solve both regression and classification problems. It utilizes ensemble learning, which is a technique that combines many classifiers to provide solutions to complex problems. This algorithm consists of many decision trees and establishes the outcome based on the predictions of those trees. It takes the average of the output from various trees and make prediction. 
 
@@ -391,21 +390,24 @@ ranger_fit <- ranger_workflow %>%
   fit(data_training)
 ```
 
-### Random Forest Results
+### Results from Random Forest
 
-Below are the OOB prediction error (MSE), OOB root mean square error (RMSe), and R squared score from the random forest model we have trained above. The RMSE seems to be fairly high but significantly better than the LASSO model. 
+Below are the OOB prediction error (MSE), OOB root mean square error (RMSe), and R squared score from the random forest model we have trained above. 
 
-OOB MSE: 
+OOB error (MSE) represents the difference between the original and predicted values which are extracted by squaring the average difference over predictions from the trees that do not contain in their respective bootstrap sample. 
+
 ```{r}
 ranger_fit$fit$fit$fit$prediction.error
 ```
 
-OOB RMSE: 
+OOB RMSE is the root mean square of the OOB prediction error above. The RMSE value is fairly high but  seems to be significantly better than the LASSO model. We can see that the Random Forest model performs better than the Lasso model. 
+
 ```{r}
 sqrt(ranger_fit$fit$fit$fit$prediction.error)
 ```
 
-R Squared: 
+R-Squared score is a statistical measure of fit that indicates how much variation of a dependent variable is explained by the independent variables in a regression model. For our model, the R-Squared score is around 0.4 meaning that 40% of our stock return is explained by our independent variables.
+
 ```{r}
 ranger_fit$fit$fit$fit$r.squared
 ```
@@ -541,13 +543,13 @@ plot(rf_var_imp, show_boxplots = TRUE)
 
 According to the feature importance bar chart below, we can see that the top three important features are market cap, earnings, M1SL_PC1, and GDP_PC1. 
 
-## Stacking model
+## Stacking Model
 
-### Definition 
+### A Brief Overview on Stacking Model
 
 What is stacking? Model stacking is an ensembling method that takes the outputs of many models and combines them to generate a new model—referred to as an ensemble in this package—that generates predictions informed by each of its members.
 
-### The process of stacking model
+### Process of Stacking Model
 
 Stacking model involves three separate steps: 
 
@@ -710,7 +712,7 @@ final_data_final_stack <- final_data_blend %>%
   fit_members()
 ```
 
-### The result of the stacking model: 
+### Result from Stacking Model
 
 ```{r}
 final_data_final_stack %>% 
@@ -725,11 +727,12 @@ Here, we can see that when the model predicts company with high rate of return, 
 
 After finishing our model, we then move on to compare the three models: 
 
-### Comparison of the three models
+### Comparison of the Three Models
 
 With the three models, we then move on to see which model performs the best: 
 
 #### Lasso model
+
 ```{r}
 data_frame(return_lm_tune %>%
   select(id, .metrics) %>%
