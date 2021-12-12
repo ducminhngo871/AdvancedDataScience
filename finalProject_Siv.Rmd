@@ -1,0 +1,275 @@
+---
+title: "Final Project Siv"
+author: "Sivhuo Prak (Siv)"
+date: "12/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+```
+
+```{r}
+library(tidyverse)        # for data cleaning and plotting
+library(tidymodels)       # for modeling ... tidily
+library(lubridate)        # for date manipulation
+library(openintro)        # for the abbr2state() function
+library(gplots)           # for col2hex() function
+library(RColorBrewer)     # for color palettes
+library(ggthemes)         # for more themes (including theme_map())
+library(plotly)           # for the ggplotly() - basic interactivity
+library(gganimate)        # for adding animation layers to ggplots
+library(transformr)       # for "tweening" (gganimate)
+library(gifski)           # need the library for creating gifs but don't need to load each time
+library(shiny)            # for creating interactive apps
+library(janitor)  
+library(stacks)            # for stacking models
+library(glmnet)            # for regularized regression, including LASSO
+library(ranger)            # for random forest model
+library(kknn)              # for knn model
+library(naniar)            # for examining missing values (NAs)
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+library(fastDummies)
+library(usemodels)         # for suggesting step_XXX() functions
+library(readr)
+library(kableExtra)
+library(DALEX)             # model Agnostic Language for exploration and explanation (for model interpretation)  
+library(DALEXtra)
+theme_set(theme_minimal())
+```
+
+```{r}
+finalDATASET <- read_csv("FINALDATASET.csv")
+macro_data <- read_csv("clean_macro - Sheet1.csv")
+```
+
+```{r}
+final_data <- finalDATASET %>% 
+  # make Sector dummy variables
+  dummy_cols(select_columns = "Sector") %>% 
+  # merge with updated macro data
+  select(-CPALTT01USM657N_PC1,
+         -GDP,
+         -GDP_PC1,
+         -M1SL_PC1 ,
+         -M1SL,
+         -PRICE,
+         -Sell,
+         -COMPANY) %>% 
+  merge(macro_data) %>% 
+  # convert Macro factors from characters to numeric
+  mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
+                as.numeric)) %>% 
+  group_by(YEAR, Sector) %>% 
+  # replacing the missing value with median od the industry in that year
+  mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,median(.)))) %>%
+  # delete less important factors -> Exchange can possibily be deleted
+  ungroup() %>%  
+  mutate(across(c(!where(is.numeric),-"Name"),as.factor)) %>% 
+  select(-Earnings_next_year,-observation_date) %>% 
+  drop_na() 
+
+# filter out the data for 2021
+final_data_2021 <- final_data %>% 
+  filter(YEAR == 2021)
+
+final_data <- final_data %>% 
+  filter(YEAR < 2021)
+
+# split the data
+set.seed(327) #for reproducibility
+
+data_split <- initial_split(final_data, 
+                             prop = .75)
+data_training <- training(data_split)
+data_testing <- testing(data_split)
+```
+
+## Random Forest Model 
+
+A random forest is a supervised machine learning algorithm that is constructed from decision tree algorithms. It can be used to solve both regression and classification problems. It utilizes ensemble learning, which is a technique that combines many classifiers to provide solutions to complex problems. This algorithm consists of many decision trees and establishes the outcome based on the predictions of those trees. It takes the average of the output from various trees and make prediction. 
+
+We are going to train the random forest model by using `ranger` function with 200 trees and 6 variables randomly chosen at each split to predict our stock return.  
+
+```{r}
+# set up recipe 
+ranger_recipe <-
+  recipe(PROFIT ~ ., 
+                       data = data_training) %>%
+  step_filter(YEAR<2021) %>% 
+  # remove the unwanted variables
+  step_rm(YEAR,Name,GDP,M1SL,Sector) %>% 
+  # add PE 
+  step_mutate(PE = `MARKET CAP`/EARNINGS)
+
+#define model
+ranger_spec <- 
+  rand_forest(mtry = 6, 
+              min_n = 10, 
+              trees = 200) %>% 
+  set_mode("regression") %>% 
+  set_engine("ranger")
+
+#create workflow
+ranger_workflow <- 
+  workflow() %>% 
+  add_recipe(ranger_recipe) %>% 
+  add_model(ranger_spec)
+
+#fit the model
+set.seed(712) # for reproducibility - random sampling in random forest choosing number of variables
+ranger_fit <- ranger_workflow %>% 
+  fit(data_training)
+```
+
+### Random Forest Results
+
+Below are the OOB prediction error (MSE), OOB root mean square error (RMSe), and R squared score from the random forest model we have trained above. The RMSE seems to be fairly high but significantly better than the LASSO model. 
+
+OOB MSE: 
+```{r}
+ranger_fit$fit$fit$fit$prediction.error
+```
+
+OOB RMSE: 
+```{r}
+sqrt(ranger_fit$fit$fit$fit$prediction.error)
+```
+
+R Squared: 
+```{r}
+ranger_fit$fit$fit$fit$r.squared
+```
+
+### Model Evaluation
+#### Traning Data 
+
+We use K-fold cross validation technique to evaluate our model. Below are the root mean squared error (rmse) averaged over all the five folds on the training dataset. 
+
+```{r}
+set.seed(1211) # for reproducibility
+data_cv <- vfold_cv(data_training, v = 5)
+
+metric <- metric_set(rmse)
+ctrl_res <- control_stack_resamples()
+
+ranger_cv <- ranger_workflow %>% 
+  fit_resamples(data_cv, 
+                metrics = metric,
+                control = ctrl_res)
+
+# Evaluation metrics averaged over all folds:
+as.data.frame(collect_metrics(ranger_cv))
+```
+
+
+This is the graph showing the actual return vs. predicted return.  
+
+```{r}
+ranger_prediction <- predict(
+  ranger_fit,
+  new_data = data_training)
+
+ranger_training_pred<-data_training %>% 
+  mutate(.pred = ranger_prediction$.pred)
+  
+  
+ranger_training_pred %>%
+  ggplot(aes(x = PROFIT,
+             y = .pred)) +
+  geom_point(alpha = .5,
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "darkred") +
+  labs(x = "Actual Return",
+       y = "Predicted Return")
+
+```
+
+#### Testing Data
+
+The table below shows the rmse on testing data. It is a bit higher but fairly similar to the error on training data so we could say that our model did not overfit. 
+
+```{r}
+set.seed(1211) # for reproducibility
+data_cv <- vfold_cv(data_testing, v = 5)
+
+metric <- metric_set(rmse)
+ctrl_res <- control_stack_resamples()
+
+ranger_cv <- ranger_workflow %>% 
+  fit_resamples(data_cv, 
+                metrics = metric,
+                control = ctrl_res)
+
+# Evaluation metrics averaged over all folds:
+as.data.frame(collect_metrics(ranger_cv))
+```
+
+Below is the graph showing the actual return vs. predicted return on testing data.  
+
+```{r}
+ranger_test_prediction <- predict(
+  ranger_fit,
+  new_data = data_testing)
+
+ranger_test_pred<-data_testing %>% 
+  mutate(.pred = ranger_test_prediction$.pred)
+  
+  
+ranger_test_pred %>%
+  ggplot(aes(x = PROFIT,
+             y = .pred)) +
+  geom_point(alpha = .5,
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "darkred") +
+  labs(x = "Actual Return",
+       y = "Predicted Return")
+
+```
+
+### Interpretable Machine Learning 
+
+```{r results='hide'}
+rf_explain <- 
+  explain_tidymodels(
+    model = ranger_fit,
+    data = data_training %>% select(-PROFIT), 
+    y = data_training %>%  pull(PROFIT),
+    label = "rf"
+  )
+rf_mod_perf <-  model_performance(rf_explain)
+
+```
+
+```{r}
+hist_plot <- 
+  plot(rf_mod_perf, 
+       geom = "histogram")
+box_plot <-
+  plot(rf_mod_perf, 
+       geom = "boxplot")
+
+hist_plot
+box_plot
+```
+
+Based on the box-plot and the histogram below, the residuals mostly lie between -50 to 50, but there are also some outliners that can go up to 400. 
+
+```{r}
+set.seed(10) #since we are sampling & permuting, we set a seed so we can replicate the results
+rf_var_imp <- 
+  model_parts(
+    rf_explain
+    )
+plot(rf_var_imp, show_boxplots = TRUE)
+```
+
+According to the feature importance bar chart below, we can see that the top three important features are market cap, earnings, M1SL_PC1, and GDP_PC1. 
