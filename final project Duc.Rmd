@@ -1,0 +1,31 @@
+---
+title: "finalProject Duc"
+output: html_document
+---
+
+### Stacking model: 
+
+#### Definition: 
+
+What is stacking? Model stacking is an ensembling method that takes the outputs of many models and combines them to generate a new model—referred to as an ensemble in this package—that generates predictions informed by each of its members.
+
+#### Here process of stacking model:
+
+Stacking model involves three separate steps: 
+
+1. Set up the ensemble: 
+
+- Specify a list of base learners (with a specific set of model parameters).
+
+- Specify a meta learning algorithm.
+
+2. Train the ensemble
+
+- Train each of the base learners on the training set.
+- Perform k-fold CV on each of the base learners and collect the cross-validated predictions from each (the same k-folds must be used for each base learner). These predicted values represent base learning models and the meta learning model, which can then be used to generate predictions on new data.
+
+3. Predict on new data.
+
+- To generate ensemble predictions, first generate predictions from the base learners.
+
+- Feed those predictions into the meta learner to generate the ensemble prediction.
