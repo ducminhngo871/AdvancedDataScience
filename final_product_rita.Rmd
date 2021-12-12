@@ -1,0 +1,190 @@
+---
+title: "final product rita"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+```
+
+```{r}
+library(tidyverse)        # for data cleaning and plotting
+library(tidymodels)       # for modeling ... tidily
+library(lubridate)        # for date manipulation
+library(openintro)        # for the abbr2state() function
+library(gplots)           # for col2hex() function
+library(RColorBrewer)     # for color palettes
+library(ggthemes)         # for more themes (including theme_map())
+library(plotly)           # for the ggplotly() - basic interactivity
+library(gganimate)        # for adding animation layers to ggplots
+library(transformr)       # for "tweening" (gganimate)
+library(gifski)           # need the library for creating gifs but don't need to load each time
+library(shiny)            # for creating interactive apps
+library(janitor)  
+library(stacks)            # for stacking models
+library(glmnet)            # for regularized regression, including LASSO
+library(ranger)            # for random forest model
+library(kknn)              # for knn model
+library(naniar)            # for examining missing values (NAs)
+library(moderndive)        # for King County housing data
+library(vip)               # for variable importance plots
+library(rmarkdown)         # for paged tables
+library(fastDummies)
+library(usemodels)         # for suggesting step_XXX() functions
+library(readr)
+library(kableExtra)
+library(DALEX)             # model Agnostic Language for exploration and explanation (for model interpretation)  
+library(DALEXtra)
+theme_set(theme_minimal())
+```
+```{r}
+# load the data
+finalDATASET <- read_csv("FINALDATASET.csv")
+macro_data <- read_csv("clean_macro - Sheet1.csv")
+final_data <- finalDATASET %>% 
+  # make Sector dummy variables
+  dummy_cols(select_columns = "Sector") %>% 
+  # merge with updated macro data
+  select(-CPALTT01USM657N_PC1,
+         -GDP,
+         -GDP_PC1,
+         -M1SL_PC1 ,
+         -M1SL,
+         -PRICE,
+         -Sell,
+         -COMPANY) %>% 
+  merge(macro_data) %>% 
+  # convert Macro factors from characters to numeric
+  mutate(across(c("CPALTT01USM657N_PC1","GDP","GDP_PC1","T10Y2Y","M1SL_PC1","M1SL"),
+                as.numeric)) %>% 
+  group_by(YEAR,Sector) %>% 
+  # replacing the missing value with median od the industry in that year
+  mutate(across(c(DEBTS,INVESTMENTS,CASH,VOLUME,EARNINGS,COGS,SALES,RECEIVABLE,INVENTORY),~replace(.,.==0,median(.)))) %>%
+  # delete less important factors -> Exchange can possibily be deleted
+  ungroup() %>%  
+  mutate(across(c(!where(is.numeric),-"Name"),as.factor)) %>% 
+  select(-Earnings_next_year,-observation_date) %>% 
+  drop_na() 
+
+# filter out the data for 2021
+final_data_2021 <- final_data %>% 
+  filter(YEAR == 2021)
+
+final_data <- final_data %>% 
+  filter(YEAR < 2021)
+
+# split the data
+set.seed(327) #for reproducibility
+
+data_split <- initial_split(final_data, 
+                             prop = .75)
+data_training <- training(data_split)
+data_testing <- testing(data_split)
+```
+
+
+## Stock Return Prediction Using Lasso 
+### A Brief Overview on LASSO 
+   
+LASSO(Least Absolute Shrinkage & Selection Operator) is a algorithm that penalizes less informative predictors on the basis of Least Square Regression. For OLS, our goal is to minimize the residual sum of squares^[$RSS_{OLS} = \sum_{i=1}^{n}(y_{i}-\hat{y_{i}})$] whearas LASSO models try to minimize the RSS penalized by the number of coefficients^[Penalized RSS = $\sum_{i=1}^{n}(y_{i}-\hat{y_{i}}) + \lambda \sum_{j=1}^{p}|\hat{\beta_{j}}|$, where $\lambda$ is the penalty paramter and $\sum_{j=1}^{p}|\hat{\beta_{j}}|$ is the sum of non-intercept coefficients]. LASSO model will shrink the variables that are less important to zero. 
+
+### Results from Lasso
+  
+We used a Lasso model to predic the return.To account for the fact the macroeconomic condition affects each industry differently, we also included the interaction term between GDP and sector dummies. The table below shows the estimate of each predictor in the Lasso Model.We can see that indicators in macroeconomics are relatively important to predict the stock return. The change in inflation and GDP all remain significant after shrinking. The interaction terms between GDP and industries also showed importance, accounting for the fact that the macroeconomic condition affects each industry differently: GDP seems to affect the stock return in Communication Services, Energy, and Consumer Discretionary sectors less given there negative coefficient estimates. However, the Lasso model does not perform well. It only explains 20% of the varaince in stock return and it also has a prediction is typically off by 46. 
+```{r}
+return_recipe <- recipe(PROFIT ~ ., #short-cut, . = all other vars
+                       data = data_training) %>% 
+  # filter to only have data after 2020
+  step_filter(YEAR<2021) %>% 
+  step_rm(Name,Sector,YEAR) %>% 
+  #step_rm(GDP,M1SL,Name,Sector,YEAR) %>% 
+  # add PE 
+  step_mutate(PE = `MARKET CAP`/EARNINGS) %>%
+  # Normalize all variables except for GDP
+  step_normalize(all_predictors(), 
+                 -all_nominal(),
+                 -starts_with("Sector_")) %>% 
+  # Create interaction terms
+  step_interact(terms = ~c(GDP_PC1):starts_with("Sector_")) 
+return_linear_mod <- 
+  # Define a lasso model 
+  # I believe default is mixture = 1 so probably don't need 
+  linear_reg(mixture = 1) %>% 
+  # Set the engine to "glmnet" 
+  set_engine("glmnet") %>% 
+  # The parameters we will tune.
+  set_args(penalty = tune()) %>% 
+  # Use "regression"
+  set_mode("regression")
+
+set.seed(456)
+return_lm_wf <- 
+  # Set up the workflow
+  workflow() %>% 
+  # Add the recipe
+  add_recipe(return_recipe) %>% 
+  # Add the modeling
+  add_model(return_linear_mod)
+
+penalty_grid <- grid_regular(penalty(),
+                             levels = 10)
+
+return_cv <- vfold_cv(data_training, v = 5)
+
+return_lm_tune <- 
+  return_lm_wf %>% 
+  tune_grid(
+    resamples = return_cv,
+    grid = penalty_grid
+    )
+
+best_param<-return_lm_tune %>% 
+  select_best(metric = "rmse")
+
+return_lasso_final_wf <- return_lm_wf %>% 
+  finalize_workflow(best_param)
+
+return_lasso_final_mod <- return_lasso_final_wf %>% 
+  fit(data = data_training)
+return_lasso_final_mod %>% 
+  pull_workflow_fit() %>% 
+  tidy() %>% 
+  arrange(desc(estimate)) %>% 
+  kbl(caption = "Coefficient Estimates (LASSO)") %>% 
+  kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed")) %>% 
+  scroll_box(width = "100%", height = "500px")
+```
+  
+The graph below shows the most essential predictors for our model. We can see that macroeconomics indicators all ranked the top. 
+```{r}
+return_lasso_final_mod %>% 
+  pull_workflow_fit() %>% 
+  vip()
+```
+  
+Here is the performance of the model on the testing data, the data we did not use to train our model. If the points and the blue line are perfectly aligned with the red line, it means a perfect prediction. We can see that our LASSO model does not perform well and tends to underestimate the stock with high returns, which are mostly from 2020 or earlier years.  
+
+```{r}
+test_prediction <- predict(
+  return_lasso_final_mod,
+  new_data = data_testing)
+
+testing_lasso_pred<-data_testing %>% 
+  mutate(.pred = test_prediction$.pred)
+  
+  
+testing_lasso_pred %>% 
+  ggplot(aes(x = PROFIT, 
+             y = .pred,
+             color = YEAR)) +
+  geom_point(alpha = .5, 
+             size = .5) +
+  geom_smooth(se = FALSE) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "darkred") +
+  geom_text(aes(label = Name),label.size = 0.15,data = testing_lasso_pred %>% filter(PROFIT>300) )+
+  labs(x = "Actual Return", 
+       y = "Predicted Return") + 
+  scale_color_viridis_b()
+```
